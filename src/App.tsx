@@ -580,11 +580,6 @@ export default function App() {
             {/* HERO HERO SECTION */}
             <section className="px-6 py-12 md:py-20 max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-10">
               <div className="w-full lg:w-1/2 flex flex-col items-start gap-6">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-terracotta/10 rounded-full text-xs font-bold text-terracotta uppercase tracking-wider">
-                  <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                  <span>Premium Nusantara Taste</span>
-                </div>
-                
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-espresso-dark leading-tight tracking-tight">
                   Keharmonisan Rasa Nusantara di Setiap Gigitan
                 </h1>
