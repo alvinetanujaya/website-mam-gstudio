@@ -1,0 +1,6 @@
+{
+  "name": "MAM Culinary Heritage",
+  "description": "Solusi makan harian Anda - hidangan autentik Nusantara yang lezat dan higienis, siap dikirim atau dibawa pulang.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
