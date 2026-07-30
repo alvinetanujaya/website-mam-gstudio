@@ -14,8 +14,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // Helper function to initialize Midtrans Snap client
 function getMidtransSnap() {
-  const serverKey = process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || "";
-  const clientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || process.env.MIDTRANS_CLIENT_KEY || "";
+  const rawServerKey = process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || "";
+  const rawClientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || process.env.MIDTRANS_CLIENT_KEY || "";
+  
+  const serverKey = rawServerKey.trim().replace(/[\r\n]/g, "");
+  const clientKey = rawClientKey.trim().replace(/[\r\n]/g, "");
   const isProduction = process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true" || process.env.MIDTRANS_IS_PRODUCTION === "true";
 
   if (!serverKey) {
@@ -34,70 +37,148 @@ const handleTokenizer = async (req: express.Request, res: express.Response) => {
   try {
     const { order_id, gross_amount, customer_details, item_details } = req.body;
 
-    const serverKey = process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY;
+    const rawServerKey = process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || "";
+    const serverKey = rawServerKey.trim().replace(/[\r\n]/g, "");
+
     if (!serverKey) {
+      console.error("[Midtrans API Error] Server key missing.");
       return res.status(400).json({
         error: "MIDTRANS_SERVER_KEY is missing",
         message: "Silakan masukkan MIDTRANS_SERVER_KEY di variabel lingkungan (.env atau Vercel / Secrets AI Studio).",
       });
     }
 
-    const orderId = order_id || `ORDER-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const amount = Number(gross_amount) || 0;
-
-    if (amount <= 0) {
-      return res.status(400).json({ error: "Invalid gross_amount" });
+    // 1. Clean order_id (alphanumeric and dash only)
+    let cleanOrderId = "";
+    if (order_id && typeof order_id === "string") {
+      cleanOrderId = order_id.replace(/[^a-zA-Z0-9-]/g, "");
+    }
+    if (!cleanOrderId) {
+      cleanOrderId = `ORDER-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     }
 
-    const snap = getMidtransSnap();
+    // 2. Ensure gross_amount is a clean integer (Math.round)
+    const amount = Math.round(Number(gross_amount) || 0);
+
+    if (amount <= 0) {
+      return res.status(400).json({ 
+        error: "Invalid gross_amount", 
+        message: "Jumlah total pembayaran (gross_amount) harus lebih dari 0" 
+      });
+    }
+
+    // Clean customer details
+    const cleanCustomerName = String(customer_details?.name || customer_details?.first_name || "Pelanggan").trim().substring(0, 50);
+    const cleanEmail = String(customer_details?.email || "pelanggan@example.com").trim();
+    const cleanPhone = String(customer_details?.phone || customer_details?.whatsapp || "08123456789").trim().replace(/[^0-9+]/g, "");
+    const cleanAddress = String(customer_details?.address || "Alamat Pengiriman").trim();
+
+    // Clean item details
+    const cleanItems = item_details && Array.isArray(item_details) && item_details.length > 0
+      ? item_details.map((item: any, idx: number) => {
+          const rawId = item.id ? String(item.id).replace(/[^a-zA-Z0-9-]/g, "") : `ITEM-${idx + 1}`;
+          const cleanName = String(item.name || `Item ${idx + 1}`)
+            .replace(/[^\x20-\x7E]/g, "") // Printable ASCII
+            .substring(0, 50)
+            .trim() || `Item ${idx + 1}`;
+          
+          return {
+            id: rawId.substring(0, 50) || `ITEM-${idx + 1}`,
+            name: cleanName,
+            price: Math.round(Number(item.price) || 0),
+            quantity: Math.max(1, Math.round(Number(item.quantity) || 1)),
+          };
+        })
+      : [
+          {
+            id: "ITEM-1",
+            price: amount,
+            quantity: 1,
+            name: "Pesanan Kuliner Nusantara",
+          },
+        ];
 
     const parameter = {
       transaction_details: {
-        order_id: orderId,
-        gross_amount: Math.round(amount),
+        order_id: cleanOrderId,
+        gross_amount: amount,
       },
       customer_details: {
-        first_name: customer_details?.name || customer_details?.first_name || "Pelanggan",
-        email: customer_details?.email || "pelanggan@example.com",
-        phone: customer_details?.phone || customer_details?.whatsapp || "08123456789",
+        first_name: cleanCustomerName,
+        email: cleanEmail,
+        phone: cleanPhone,
         billing_address: {
-          address: customer_details?.address || "Alamat Pengiriman",
+          address: cleanAddress,
         },
         shipping_address: {
-          address: customer_details?.address || "Alamat Pengiriman",
+          address: cleanAddress,
         },
       },
-      item_details: item_details && Array.isArray(item_details) && item_details.length > 0 
-        ? item_details.map((item: { id?: string; name: string; price: number; quantity: number }) => ({
-            id: item.id || `ITEM-${Math.random().toString(36).substring(7)}`,
-            name: item.name.substring(0, 50), // Max 50 chars for Midtrans
-            price: Math.round(item.price),
-            quantity: Math.max(1, Math.round(item.quantity)),
-          }))
-        : [
-            {
-              id: "ITEM-1",
-              price: Math.round(amount),
-              quantity: 1,
-              name: "Pesanan Kuliner Nusantara",
-            },
-          ],
+      item_details: cleanItems,
     };
 
-    console.log(`[Midtrans API] Creating Snap Token for Order ID: ${orderId}, Amount: ${amount}`);
-    const transaction = await snap.createTransaction(parameter);
-    console.log(`[Midtrans API] Snap Token created successfully:`, transaction.token);
+    console.log(`[Midtrans API] Requesting Snap Token for Order ID: ${cleanOrderId}, Amount: Rp${amount}`);
 
-    return res.json({
-      token: transaction.token,
-      redirect_url: transaction.redirect_url,
-      order_id: orderId,
-    });
+    // Try creating via Midtrans SDK first
+    try {
+      const snap = getMidtransSnap();
+      const transaction = await snap.createTransaction(parameter);
+      console.log(`[Midtrans API] Snap Token created successfully via SDK:`, transaction.token);
+
+      return res.json({
+        token: transaction.token,
+        redirect_url: transaction.redirect_url,
+        order_id: cleanOrderId,
+      });
+    } catch (sdkError: any) {
+      console.warn("[Midtrans SDK Failed] Falling back to direct REST API fetch...", sdkError?.message || sdkError);
+      
+      // Fallback: Direct Fetch call to Midtrans Snap REST API
+      const isProduction = process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true" || process.env.MIDTRANS_IS_PRODUCTION === "true";
+      const apiUrl = isProduction
+        ? "https://app.midtrans.com/snap/v1/transactions"
+        : "https://app.sandbox.midtrans.com/snap/v1/transactions";
+
+      const authHeader = `Basic ${Buffer.from(`${serverKey}:`).toString("base64")}`;
+
+      const apiResponse = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "Authorization": authHeader,
+        },
+        body: JSON.stringify(parameter),
+      });
+
+      const responseData: any = await apiResponse.json();
+
+      if (!apiResponse.ok || !responseData.token) {
+        console.error("❌ [Midtrans REST API Error Output]:", JSON.stringify(responseData, null, 2));
+        throw new Error(
+          responseData?.error_messages
+            ? responseData.error_messages.join(", ")
+            : responseData?.message || `Midtrans API returned status ${apiResponse.status}`
+        );
+      }
+
+      console.log(`[Midtrans API] Snap Token created successfully via REST API:`, responseData.token);
+      return res.json({
+        token: responseData.token,
+        redirect_url: responseData.redirect_url,
+        order_id: cleanOrderId,
+      });
+    }
   } catch (error: any) {
-    console.error("[Midtrans API Error] Failed to create Snap Token:", error);
+    console.error("❌ [Midtrans API Tokenizer Error Details]:", {
+      message: error.message,
+      apiResponse: error.ApiResponse || error.response || error,
+      stack: error.stack,
+    });
+
     return res.status(500).json({
       error: "Failed to create transaction token",
-      message: error.message || "An unexpected error occurred",
+      message: error.message || "Terjadi kesalahan saat berkomunikasi dengan server Midtrans.",
     });
   }
 };
