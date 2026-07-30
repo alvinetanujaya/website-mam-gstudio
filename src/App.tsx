@@ -39,6 +39,12 @@ export default function App() {
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [isBottomCartExpanded, setIsBottomCartExpanded] = useState<boolean>(false);
+  const [isCartBouncing, setIsCartBouncing] = useState<boolean>(false);
+
+  const triggerCartAnimation = () => {
+    setIsCartBouncing(true);
+    setTimeout(() => setIsCartBouncing(false), 650);
+  };
 
   // Scroll refs for horizontal slider carousels
   const menuScrollRef = useRef<HTMLDivElement>(null);
@@ -243,6 +249,7 @@ export default function App() {
     });
 
     setToastMessage(`Berhasil menambahkan ${selectedItem.name} ke pesanan`);
+    triggerCartAnimation();
     setSelectedItem(null);
   };
 
@@ -268,6 +275,7 @@ export default function App() {
     });
 
     setToastMessage(`Menambahkan ${item.name}`);
+    triggerCartAnimation();
   };
 
   // Update Cart quantities (plus/minus) on Summary screen or widgets
@@ -296,6 +304,157 @@ export default function App() {
     } else {
       navigator.clipboard.writeText(window.location.href);
       setToastMessage("Link web berhasil disalin!");
+    }
+  };
+
+  // Midtrans Payment States
+  const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
+  const [paymentResult, setPaymentResult] = useState<{
+    show: boolean;
+    status: 'success' | 'pending' | 'error';
+    orderId?: string;
+    message?: string;
+  } | null>(null);
+
+  // Load Midtrans Snap Script dynamically
+  useEffect(() => {
+    const clientKey =
+      import.meta.env.VITE_MIDTRANS_CLIENT_KEY ||
+      import.meta.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY ||
+      "";
+    const isProduction =
+      import.meta.env.VITE_MIDTRANS_IS_PRODUCTION === "true" ||
+      import.meta.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true";
+
+    const snapUrl = isProduction
+      ? "https://app.midtrans.com/snap/snap.js"
+      : "https://app.sandbox.midtrans.com/snap/snap.js";
+
+    const scriptId = "midtrans-snap-script";
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement("script");
+      script.id = scriptId;
+      script.src = snapUrl;
+      if (clientKey) {
+        script.setAttribute("data-client-key", clientKey);
+      }
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  // Midtrans Snap Payment Trigger
+  const handlePayWithMidtrans = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    if (!customerDetails.fullName.trim()) {
+      alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
+      return;
+    }
+    if (!customerDetails.deliveryAddress.trim()) {
+      alert("Silakan masukkan alamat lengkap pengiriman Anda.");
+      return;
+    }
+    if (!customerDetails.deliveryDate) {
+      alert("Silakan pilih tanggal pengiriman pesanan Anda.");
+      return;
+    }
+
+    setIsProcessingPayment(true);
+    setToastMessage("Menyiapkan transaksi Midtrans Snap...");
+
+    try {
+      const itemDetails = [
+        ...cart.map((item) => ({
+          id: `ITEM-${item.menuItem.id}`,
+          name: item.selectedOptions.length > 0 
+            ? `${item.menuItem.name} (+${item.selectedOptions.map(o => o.name).join(", ")})`
+            : item.menuItem.name,
+          price: item.unitPrice,
+          quantity: item.quantity,
+        })),
+        {
+          id: "SHIPPING-FEE",
+          name: "Ongkos Kirim (Flat Rate)",
+          price: SHIPPING_FEE,
+          quantity: 1,
+        }
+      ];
+
+      const response = await fetch("/api/tokenizer", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gross_amount: grandTotal,
+          customer_details: {
+            name: customerDetails.fullName,
+            address: customerDetails.deliveryAddress,
+            notes: customerDetails.notes,
+            delivery_date: customerDetails.deliveryDate,
+          },
+          item_details: itemDetails,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.token) {
+        throw new Error(data.message || data.error || "Gagal membuat token transaksi.");
+      }
+
+      const snapToken = data.token;
+      console.log("Midtrans Snap Token received:", snapToken);
+
+      if (window.snap) {
+        window.snap.pay(snapToken, {
+          onSuccess: function (result: any) {
+            console.log("Midtrans payment success:", result);
+            setCart([]);
+            setPaymentResult({
+              show: true,
+              status: "success",
+              orderId: data.order_id || result?.order_id,
+              message: "Pembayaran Anda berhasil terverifikasi! Pesanan segera disiapkan.",
+            });
+            setToastMessage("Pembayaran Berhasil! Terima kasih.");
+          },
+          onPending: function (result: any) {
+            console.log("Midtrans payment pending:", result);
+            setPaymentResult({
+              show: true,
+              status: "pending",
+              orderId: data.order_id || result?.order_id,
+              message: "Pesanan berhasil disimpan. Silakan selesaikan pembayaran sesuai instruksi.",
+            });
+            setToastMessage("Menunggu pembayaran (Pending).");
+          },
+          onError: function (result: any) {
+            console.error("Midtrans payment error:", result);
+            setPaymentResult({
+              show: true,
+              status: "error",
+              orderId: data.order_id || result?.order_id,
+              message: "Pembayaran gagal atau dibatalkan oleh pengguna.",
+            });
+            setToastMessage("Pembayaran gagal.");
+          },
+          onClose: function () {
+            console.log("Midtrans Snap popup closed.");
+            setToastMessage("Pop-up pembayaran ditutup.");
+          },
+        });
+      } else if (data.redirect_url) {
+        window.open(data.redirect_url, "_blank");
+      } else {
+        alert("Modul Midtrans Snap belum siap. Silakan coba beberapa saat lagi.");
+      }
+    } catch (err: any) {
+      console.error("Error initiating Midtrans payment:", err);
+      alert(`Gagal memproses pembayaran: ${err.message || "Terjadi kesalahan"}`);
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -406,6 +565,15 @@ export default function App() {
           <motion.button
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}
+            animate={
+              isCartBouncing
+                ? {
+                    scale: [1, 1.35, 0.9, 1.2, 0.95, 1.1, 1],
+                    rotate: [0, -18, 18, -12, 12, -6, 0],
+                  }
+                : { scale: 1, rotate: 0 }
+            }
+            transition={{ duration: 0.6, ease: "easeOut" }}
             onClick={() => setCurrentTab("checkout")}
             className="text-espresso-dark hover:text-terracotta p-2 -mr-2 transition-colors duration-200 relative cursor-pointer"
             aria-label="Keranjang Belanja"
@@ -655,18 +823,36 @@ export default function App() {
               {/* Horizontal Slider Carousel for Home Page */}
               <div 
                 ref={homeMenuScrollRef}
-                className="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-6 pt-2 hide-scrollbar scroll-smooth"
+                className="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-8 pt-3 px-1 hide-scrollbar scroll-smooth"
               >
-                {MENU_ITEMS.map((item) => (
-                  <div
+                {MENU_ITEMS.map((item, index) => (
+                  <motion.div
                     key={item.id}
-                    className="flex-none w-[280px] sm:w-[320px] md:w-[350px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-xl hover:-translate-y-1 border border-outline-variant/25 transition-all duration-300 flex flex-col group relative"
+                    initial={{ opacity: 0, y: 24, scale: 0.95 }}
+                    whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                    viewport={{ once: true, margin: "-30px" }}
+                    transition={{
+                      duration: 0.5,
+                      delay: index * 0.07,
+                      ease: [0.25, 0.1, 0.25, 1.0],
+                    }}
+                    whileHover={{ 
+                      y: -8, 
+                      scale: 1.015,
+                      transition: { duration: 0.25, ease: "easeOut" }
+                    }}
+                    className="flex-none w-[280px] sm:w-[320px] md:w-[350px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-[0_16px_36px_rgba(44,27,18,0.12)] border border-outline-variant/25 transition-all duration-300 flex flex-col group relative"
                   >
                     {item.featured && (
-                      <div className="absolute top-4 left-4 bg-terracotta text-soft-cream font-bold text-xs uppercase tracking-wider px-3 py-1 rounded-lg z-10 flex items-center gap-1 shadow-sm">
-                        <Star className="w-3.5 h-3.5 fill-current" />
+                      <motion.div 
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.2 + index * 0.05 }}
+                        className="absolute top-4 left-4 bg-terracotta text-soft-cream font-bold text-xs uppercase tracking-wider px-3 py-1 rounded-lg z-10 flex items-center gap-1 shadow-md border border-white/20"
+                      >
+                        <Star className="w-3.5 h-3.5 fill-current animate-pulse" />
                         <span>Best Seller</span>
-                      </div>
+                      </motion.div>
                     )}
 
                     <div 
@@ -674,14 +860,17 @@ export default function App() {
                       className="relative overflow-hidden cursor-pointer bg-espresso-dark/5 shrink-0 w-full h-48 md:h-52"
                     >
                       <img
-                        className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                        className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700 ease-out"
                         alt={item.name}
                         src={item.image}
                       />
-                      <div className="absolute inset-0 bg-espresso-dark/15 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-xs">
-                        <span className="bg-white/95 text-espresso-dark px-4 py-2 rounded-full font-bold text-xs shadow-md">
+                      <div className="absolute inset-0 bg-espresso-dark/25 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center backdrop-blur-xs">
+                        <motion.span 
+                          whileHover={{ scale: 1.08 }}
+                          className="bg-white/95 text-espresso-dark px-4 py-2 rounded-full font-bold text-xs shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300"
+                        >
                           Lihat Detail
-                        </span>
+                        </motion.span>
                       </div>
                     </div>
 
@@ -707,17 +896,17 @@ export default function App() {
                         </span>
                         
                         <motion.button
-                          whileHover={{ scale: 1.08 }}
+                          whileHover={{ scale: 1.1, backgroundColor: "#D35400", color: "#FDFBF7" }}
                           whileTap={{ scale: 0.92 }}
                           onClick={() => handleQuickAdd(item)}
-                          className="bg-terracotta/10 text-terracotta hover:bg-terracotta hover:text-soft-cream font-bold px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 flex items-center gap-1 cursor-pointer shadow-xs"
+                          className="bg-terracotta/10 text-terracotta font-bold px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 flex items-center gap-1 cursor-pointer shadow-xs"
                         >
                           <Plus className="w-3.5 h-3.5 shrink-0" />
                           <span>Tambah</span>
                         </motion.button>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </section>
@@ -1295,7 +1484,7 @@ export default function App() {
                       <span>Detail Pengiriman</span>
                     </h2>
 
-                    <form onSubmit={handleSendToWhatsApp} className="flex flex-col gap-5">
+                    <form onSubmit={handlePayWithMidtrans} className="flex flex-col gap-5">
                       <div>
                         <label className="block text-xs font-bold text-espresso-dark uppercase tracking-wider mb-2" htmlFor="nama">
                           Nama Lengkap <span className="text-terracotta">*</span>
@@ -1413,15 +1602,34 @@ export default function App() {
                         />
                       </div>
 
-                      <motion.button
-                        type="submit"
-                        whileHover={{ scale: 1.02, y: -2 }}
-                        whileTap={{ scale: 0.96 }}
-                        className="w-full bg-terracotta text-soft-cream font-extrabold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 mt-4 cursor-pointer text-base group"
-                      >
-                        <CreditCard className="w-5 h-5 group-hover:scale-110 transition-transform shrink-0" />
-                        <span>Bayar Sekarang (Kirim via WhatsApp)</span>
-                      </motion.button>
+                      <div className="pt-2 space-y-3">
+                        <motion.button
+                          type="submit"
+                          disabled={isProcessingPayment}
+                          whileHover={{ scale: 1.02, y: -2 }}
+                          whileTap={{ scale: 0.96 }}
+                          className="w-full bg-terracotta text-soft-cream font-extrabold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer text-base group disabled:opacity-60"
+                        >
+                          <CreditCard className="w-5 h-5 group-hover:scale-110 transition-transform shrink-0" />
+                          <span>
+                            {isProcessingPayment ? "Memproses Pembayaran..." : "Bayar Sekarang (Midtrans Snap)"}
+                          </span>
+                        </motion.button>
+
+                        <div className="flex items-center justify-center gap-1.5 text-[11px] text-espresso-dark/60 font-medium">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>Mendukung QRIS, BCA/Mandiri/BRI VA, GoPay, ShopeePay & Kartu</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleSendToWhatsApp}
+                          className="w-full bg-surface-container-high/60 hover:bg-surface-container-high text-espresso-dark font-semibold py-3 rounded-xl border border-outline-variant/30 transition-all flex items-center justify-center gap-2 cursor-pointer text-sm"
+                        >
+                          <Send className="w-4 h-4 text-emerald-600" />
+                          <span>Atau Pesan Manual via WhatsApp</span>
+                        </button>
+                      </div>
                     </form>
                   </div>
                 </div>
@@ -1732,6 +1940,62 @@ export default function App() {
                 </div>
 
               </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Payment Result Modal (Midtrans Transaction Status) */}
+      <AnimatePresence>
+        {paymentResult && paymentResult.show && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setPaymentResult(null)}
+              className="fixed inset-0 bg-espresso-dark/60 backdrop-blur-xs z-50 cursor-pointer"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-outline-variant/30 text-center space-y-4 m-4"
+            >
+              <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center bg-terracotta/10 text-terracotta">
+                {paymentResult.status === "success" && <Check className="w-8 h-8 text-emerald-600" />}
+                {paymentResult.status === "pending" && <Clock className="w-8 h-8 text-amber-600" />}
+                {paymentResult.status === "error" && <AlertCircle className="w-8 h-8 text-rose-600" />}
+              </div>
+
+              <h3 className="text-xl font-black text-espresso-dark">
+                {paymentResult.status === "success" && "Pembayaran Berhasil!"}
+                {paymentResult.status === "pending" && "Menunggu Pembayaran"}
+                {paymentResult.status === "error" && "Pembayaran Tidak Berhasil"}
+              </h3>
+
+              {paymentResult.orderId && (
+                <div className="bg-surface-container-low p-2.5 rounded-xl border border-outline-variant/20 text-xs font-mono text-espresso-dark/70">
+                  ID Transaksi: <strong>{paymentResult.orderId}</strong>
+                </div>
+              )}
+
+              <p className="text-xs md:text-sm text-espresso-dark/70 leading-relaxed">
+                {paymentResult.message}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentResult(null);
+                  if (paymentResult.status === "success") {
+                    setCurrentTab("home");
+                  }
+                }}
+                className="w-full bg-terracotta text-soft-cream font-bold py-3 rounded-xl shadow-md hover:shadow-lg transition-all cursor-pointer text-sm"
+              >
+                Tutup & Lanjutkan
+              </button>
             </motion.div>
           </>
         )}

@@ -27,3 +27,19 @@ export interface CustomerDetails {
   deliveryDate: string;
   notes: string;
 }
+
+export interface SnapPayOptions {
+  onSuccess?: (result: any) => void;
+  onPending?: (result: any) => void;
+  onError?: (result: any) => void;
+  onClose?: () => void;
+}
+
+declare global {
+  interface Window {
+    snap?: {
+      pay: (token: string, options?: SnapPayOptions) => void;
+      embed?: (token: string, options?: { embedId: string }) => void;
+    };
+  }
+}
