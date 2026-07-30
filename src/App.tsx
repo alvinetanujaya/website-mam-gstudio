@@ -1742,8 +1742,8 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Floating "Order Now" Button - Navigates to Food Ordering Page (Home tab only) */}
-      {currentTab === "home" && (
+      {/* Floating "Order Now" Button - Navigates to Food Ordering Page (Home tab only, when no items added yet) */}
+      {currentTab === "home" && totalItemsCount === 0 && (
         <motion.button
           onClick={() => setCurrentTab("menu")}
           initial={{ opacity: 0, scale: 0.8, y: 50 }}
@@ -1755,11 +1755,7 @@ export default function App() {
           }}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          className={`fixed right-6 z-40 bg-terracotta text-soft-cream px-5 py-3.5 rounded-full shadow-[0_8px_30px_rgba(211,84,0,0.35)] hover:shadow-[0_8px_30px_rgba(211,84,0,0.5)] flex items-center gap-2.5 font-bold text-sm md:text-base border border-white/20 transition-all duration-300 cursor-pointer ${
-            totalItemsCount > 0
-              ? "bottom-24" // Push up when floating bottom cart is visible
-              : "bottom-6"  // Standard position
-          }`}
+          className="fixed right-6 bottom-6 z-40 bg-terracotta text-soft-cream px-5 py-3.5 rounded-full shadow-[0_8px_30px_rgba(211,84,0,0.35)] hover:shadow-[0_8px_30px_rgba(211,84,0,0.5)] flex items-center gap-2.5 font-bold text-sm md:text-base border border-white/20 transition-all duration-300 cursor-pointer"
           id="floating-order-now-btn"
         >
           <span className="relative flex h-3 w-3">
