@@ -354,8 +354,8 @@ export default function App() {
     }
   }, []);
 
-  // Midtrans Snap Payment Trigger
-  const handlePayWithMidtrans = async (e?: React.FormEvent) => {
+  // Midtrans Snap Payment Trigger (Pure XHR for Safari iOS Compatibility)
+  const handlePayWithMidtrans = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
     try {
@@ -403,7 +403,7 @@ export default function App() {
         quantity: 1,
       });
 
-      const payload = {
+      const payloadString = JSON.stringify({
         name: cleanName,
         phone: cleanPhone,
         address: cleanAddress,
@@ -426,68 +426,79 @@ export default function App() {
           notes: cleanNotes,
           delivery_date: cleanDate,
         },
-      };
-
-      const targetUrl = '/api/checkout';
-
-      const res = await fetch(targetUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/checkout", true);
+      xhr.setRequestHeader("Content-Type", "application/json");
 
-      if (data.token && window.snap && typeof window.snap.pay === "function") {
-        window.snap.pay(data.token, {
-          onSuccess: function (result: any) {
-            console.log("Midtrans payment success:", result);
-            setCart([]);
-            setPaymentResult({
-              show: true,
-              status: "success",
-              orderId: data.order_id || result?.order_id,
-              message: "Pembayaran Anda berhasil terverifikasi! Pesanan segera disiapkan.",
-            });
-            setToastMessage("Pembayaran Berhasil! Terima kasih.");
-          },
-          onPending: function (result: any) {
-            console.log("Midtrans payment pending:", result);
-            setPaymentResult({
-              show: true,
-              status: "pending",
-              orderId: data.order_id || result?.order_id,
-              message: "Pesanan berhasil disimpan. Silakan selesaikan pembayaran sesuai instruksi.",
-            });
-            setToastMessage("Menunggu pembayaran (Pending).");
-          },
-          onError: function (result: any) {
-            console.error("Midtrans payment error:", result);
-            setPaymentResult({
-              show: true,
-              status: "error",
-              orderId: data.order_id || result?.order_id,
-              message: "Pembayaran gagal atau dibatalkan oleh pengguna.",
-            });
-            setToastMessage("Pembayaran gagal.");
-          },
-          onClose: function () {
-            console.log("Midtrans Snap popup closed.");
-            setToastMessage("Pop-up pembayaran ditutup.");
-          },
-        });
-      } else if (data.redirect_url) {
-        window.location.href = String(data.redirect_url);
-      } else {
-        alert("Gagal mendapatkan token transaksi: " + String(data.message || data.error || "Gagal memproses pembayaran"));
-      }
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4) {
+          setIsProcessingPayment(false);
+          if (xhr.status === 200) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              if (data.token && window.snap && typeof window.snap.pay === "function") {
+                window.snap.pay(data.token, {
+                  onSuccess: function (result: any) {
+                    console.log("Midtrans payment success:", result);
+                    setCart([]);
+                    setPaymentResult({
+                      show: true,
+                      status: "success",
+                      orderId: data.order_id || result?.order_id,
+                      message: "Pembayaran Anda berhasil terverifikasi! Pesanan segera disiapkan.",
+                    });
+                    setToastMessage("Pembayaran Berhasil! Terima kasih.");
+                  },
+                  onPending: function (result: any) {
+                    console.log("Midtrans payment pending:", result);
+                    setPaymentResult({
+                      show: true,
+                      status: "pending",
+                      orderId: data.order_id || result?.order_id,
+                      message: "Pesanan berhasil disimpan. Silakan selesaikan pembayaran sesuai instruksi.",
+                    });
+                    setToastMessage("Menunggu pembayaran (Pending).");
+                  },
+                  onError: function (result: any) {
+                    console.error("Midtrans payment error:", result);
+                    setPaymentResult({
+                      show: true,
+                      status: "error",
+                      orderId: data.order_id || result?.order_id,
+                      message: "Pembayaran gagal atau dibatalkan oleh pengguna.",
+                    });
+                    setToastMessage("Pembayaran gagal.");
+                  },
+                  onClose: function () {
+                    console.log("Midtrans Snap popup closed.");
+                    setToastMessage("Pop-up pembayaran ditutup.");
+                  },
+                });
+              } else if (data.redirect_url) {
+                window.location.href = String(data.redirect_url);
+              } else {
+                alert("Gagal mendapatkan token Midtrans: " + JSON.stringify(data));
+              }
+            } catch (parseErr: any) {
+              alert("Gagal membaca respon server: " + String(parseErr?.message || parseErr));
+            }
+          } else {
+            alert("Server Error Status: " + xhr.status + " - " + xhr.responseText);
+          }
+        }
+      };
+
+      xhr.onerror = function () {
+        setIsProcessingPayment(false);
+        alert("XHR Network Error saat menghubungi /api/checkout");
+      };
+
+      xhr.send(payloadString);
     } catch (err: any) {
-      const targetUrl = '/api/checkout';
-      alert(`Fetch error pada URL [${targetUrl}]: ${err?.message || err}`);
-    } finally {
       setIsProcessingPayment(false);
+      alert("XHR Catch Error: " + String(err?.message || err));
     }
   };
 
