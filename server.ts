@@ -35,7 +35,11 @@ function getMidtransSnap() {
 // 1. API Route: Snap Transaction Token Generator
 const handleTokenizer = async (req: express.Request, res: express.Response) => {
   try {
-    const { order_id, gross_amount, customer_details, item_details } = req.body;
+    const body = req.body || {};
+    const order_id = body.order_id;
+    const gross_amount = body.gross_amount;
+    const customer_details = body.customer_details || body.customerDetails;
+    const item_details = body.item_details || body.items;
 
     // 3. SANITASI SERVER KEY
     const serverKey = (process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || "").trim().replace(/[\r\n]/g, "");

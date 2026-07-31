@@ -359,10 +359,10 @@ export default function App() {
     if (e) e.preventDefault();
 
     try {
-      const cleanName = (customerDetails?.fullName ?? "").toString().trim();
-      const cleanAddress = (customerDetails?.deliveryAddress ?? "").toString().trim();
-      const cleanDate = (customerDetails?.deliveryDate ?? "").toString().trim();
-      const cleanNotes = (customerDetails?.notes ?? "").toString().trim();
+      const cleanName = String(customerDetails?.fullName || "").trim();
+      const cleanAddress = String(customerDetails?.deliveryAddress || "").trim();
+      const cleanDate = String(customerDetails?.deliveryDate || "").trim();
+      const cleanNotes = String(customerDetails?.notes || "").trim();
 
       if (!cleanName) {
         alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
@@ -382,10 +382,10 @@ export default function App() {
 
       const itemDetails = [
         ...cart.map((item) => ({
-          id: `ITEM-${item.menuItem.id}`.toString(),
+          id: String(`ITEM-${item.menuItem.id}`),
           name: item.selectedOptions.length > 0 
-            ? `${item.menuItem.name} (+${item.selectedOptions.map(o => o.name).join(", ")})`.toString()
-            : item.menuItem.name.toString(),
+            ? String(`${item.menuItem.name} (+${item.selectedOptions.map(o => o.name).join(", ")})`)
+            : String(item.menuItem.name),
           price: Number(item.unitPrice) || 0,
           quantity: Number(item.quantity) || 1,
         })),
@@ -397,35 +397,32 @@ export default function App() {
         }
       ];
 
-      // Pure relative path string for API call
-      const response = await fetch("/api/tokenizer", {
+      const res = await fetch("/api/checkout", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gross_amount: Number(grandTotal) || 0,
-          customer_details: {
+          items: itemDetails,
+          item_details: itemDetails,
+          customerDetails: {
             name: cleanName,
             address: cleanAddress,
             notes: cleanNotes,
             delivery_date: cleanDate,
           },
-          item_details: itemDetails,
+          customer_details: {
+            name: cleanName,
+            address: cleanAddress,
+            notes: cleanNotes,
+            delivery_date: cleanDate,
+          }
         }),
       });
 
-      const data = await response.json();
+      const data = await res.json();
 
-      if (!response.ok || !data.token) {
-        throw new Error((data.message || data.error || "Gagal membuat token transaksi.").toString());
-      }
-
-      const snapToken = (data.token ?? "").toString().trim();
-      console.log("Midtrans Snap Token received:", snapToken);
-
-      if (window.snap && typeof window.snap.pay === "function") {
-        window.snap.pay(snapToken, {
+      if (data.token && window.snap && typeof window.snap.pay === "function") {
+        window.snap.pay(data.token, {
           onSuccess: function (result: any) {
             console.log("Midtrans payment success:", result);
             setCart([]);
@@ -463,16 +460,12 @@ export default function App() {
           },
         });
       } else if (data.redirect_url) {
-        window.location.href = (data.redirect_url ?? "").toString();
+        window.location.href = String(data.redirect_url);
       } else {
-        alert("Modul Midtrans Snap belum siap. Silakan coba beberapa saat lagi.");
+        alert("Gagal mendapatkan token transaksi: " + String(data.message || data.error || "Gagal memproses pembayaran"));
       }
     } catch (err: any) {
-      console.error("Error initiating Midtrans payment:", err);
-      const errName = err?.name ? String(err.name) : "Error";
-      const errMessage = err?.message ? String(err.message) : String(err || "Terjadi kesalahan");
-      const errStack = err?.stack ? String(err.stack) : "No stack trace available";
-      alert(`Error detail: ${errName} - ${errMessage}\nStack: ${errStack}`);
+      alert("Fetch error: " + String(err?.message || err));
     } finally {
       setIsProcessingPayment(false);
     }
