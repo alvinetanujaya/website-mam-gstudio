@@ -340,11 +340,14 @@ export default function App() {
         script = document.createElement("script");
         script.id = scriptId;
         script.src = snapUrl;
-        if (clientKey && clientKey.length > 0) {
+        if (clientKey) {
           script.setAttribute("data-client-key", clientKey);
         }
         script.async = true;
         document.body.appendChild(script);
+      } else if (clientKey) {
+        // Ensure data-client-key is set on existing script tag
+        script.setAttribute("data-client-key", clientKey);
       }
     } catch (err) {
       console.warn("Gagal memuat script Midtrans Snap:", err);
@@ -693,11 +696,12 @@ export default function App() {
                   onClick={() => {
                     const el = document.getElementById("lokasi-section");
                     if (el) {
-                      el.scrollIntoView({ behavior: "smooth" });
+                      try { el.scrollIntoView({ behavior: "smooth" }); } catch (_) { el.scrollIntoView(); }
                     } else {
                       setCurrentTab("home");
                       setTimeout(() => {
-                        document.getElementById("lokasi-section")?.scrollIntoView({ behavior: "smooth" });
+                        const target = document.getElementById("lokasi-section");
+                        if (target) { try { target.scrollIntoView({ behavior: "smooth" }); } catch (_) { target.scrollIntoView(); } }
                       }, 100);
                     }
                     setIsDrawerOpen(false);
@@ -712,11 +716,12 @@ export default function App() {
                   onClick={() => {
                     const el = document.getElementById("faq-section");
                     if (el) {
-                      el.scrollIntoView({ behavior: "smooth" });
+                      try { el.scrollIntoView({ behavior: "smooth" }); } catch (_) { el.scrollIntoView(); }
                     } else {
                       setCurrentTab("home");
                       setTimeout(() => {
-                        document.getElementById("faq-section")?.scrollIntoView({ behavior: "smooth" });
+                        const target = document.getElementById("faq-section");
+                        if (target) { try { target.scrollIntoView({ behavior: "smooth" }); } catch (_) { target.scrollIntoView(); } }
                       }, 100);
                     }
                     setIsDrawerOpen(false);
