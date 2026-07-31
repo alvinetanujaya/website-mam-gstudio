@@ -34,6 +34,7 @@ function getMidtransSnap() {
 
 // 1. API Route: Snap Transaction Token Generator
 const handleTokenizer = async (req: express.Request, res: express.Response) => {
+  console.log(`[Express API Handler] ${req.method} ${req.originalUrl} triggered`);
   try {
     const body = req.body || {};
     const order_id = body.order_id;
