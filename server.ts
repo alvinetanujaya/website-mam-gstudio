@@ -17,8 +17,8 @@ function getMidtransSnap() {
   const rawServerKey = process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || "";
   const rawClientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || process.env.MIDTRANS_CLIENT_KEY || "";
   
-  const serverKey = rawServerKey.trim().replace(/[\r\n]/g, "");
-  const clientKey = rawClientKey.trim().replace(/[\r\n]/g, "");
+  const serverKey = (rawServerKey || "").trim().replace(/[\r\n]/g, "");
+  const clientKey = (rawClientKey || "").trim().replace(/[\r\n]/g, "");
   const isProduction = process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true" || process.env.MIDTRANS_IS_PRODUCTION === "true";
 
   if (!serverKey) {
@@ -37,34 +37,36 @@ const handleTokenizer = async (req: express.Request, res: express.Response) => {
   try {
     const { order_id, gross_amount, customer_details, item_details } = req.body;
 
-    const rawServerKey = process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || "";
-    const serverKey = rawServerKey.trim().replace(/[\r\n]/g, "");
+    // 3. SANITASI SERVER KEY
+    const serverKey = (process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || "").trim().replace(/[\r\n]/g, "");
 
     if (!serverKey) {
       console.error("[Midtrans API Error] Server key missing.");
-      return res.status(400).json({
-        error: "MIDTRANS_SERVER_KEY is missing",
-        message: "Silakan masukkan MIDTRANS_SERVER_KEY di variabel lingkungan (.env atau Vercel / Secrets AI Studio).",
+      return res.status(500).json({
+        error: "MIDTRANS_SERVER_KEY belum dikonfigurasi di environment variables (.env / Secrets).",
       });
     }
 
-    // 1. Clean order_id (alphanumeric and dash only, max 50 chars)
+    // 2. SANITASI ORDER ID (alphanumeric dan hyphen)
     const rawOrderId = typeof order_id === "string" ? order_id : "";
-    let cleanOrderId = rawOrderId.replace(/[^a-zA-Z0-9-]/g, "").substring(0, 50);
-    if (!cleanOrderId) {
-      cleanOrderId = `ORDER-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    }
+    const sanitizedOrderId = rawOrderId.replace(/[^a-zA-Z0-9-]/g, "").substring(0, 50);
+    const cleanOrderId = sanitizedOrderId || `ORDER-${Date.now()}`;
 
-    // 2. Clean customer details
+    // 1. SANITASI TELEPON
+    const rawPhone = String(customer_details?.phone || customer_details?.whatsapp || customer_details?.phone_number || "").trim();
+    const digitsOnlyPhone = rawPhone.replace(/[^0-9]/g, "");
+    const cleanPhone = (digitsOnlyPhone && digitsOnlyPhone.length >= 10) 
+      ? digitsOnlyPhone.substring(0, 15) 
+      : "08123456789";
+
+    // Sanitasi detail pelanggan lainnya
     const rawName = String(customer_details?.name || customer_details?.first_name || "Pelanggan").trim();
     const cleanFirstName = rawName.replace(/[^a-zA-Z0-9\s]/g, "").trim().substring(0, 50) || "Pelanggan";
     const rawEmail = String(customer_details?.email || "").trim();
     const cleanEmail = rawEmail.includes("@") ? rawEmail : "pelanggan@example.com";
-    const rawPhone = String(customer_details?.phone || customer_details?.whatsapp || "08123456789").trim();
-    const cleanPhone = rawPhone.replace(/[^0-9]/g, "").substring(0, 15) || "08123456789";
     const cleanAddress = String(customer_details?.address || "Alamat Pengiriman").trim().substring(0, 200) || "Alamat Pengiriman";
 
-    // 3. Clean item details & compute exact sum
+    // Sanitasi item details
     const cleanItems = (Array.isArray(item_details) && item_details.length > 0 ? item_details : []).map((item: any, idx: number) => {
       const rawId = String(item.id || `ITEM-${idx + 1}`).replace(/[^a-zA-Z0-9-]/g, "").substring(0, 50);
       const cleanId = rawId || `ITEM-${idx + 1}`;
@@ -81,7 +83,7 @@ const handleTokenizer = async (req: express.Request, res: express.Response) => {
       };
     });
 
-    // 4. Calculate total amount to guarantee gross_amount == sum(item_details)
+    // Hitung total amount agar gross_amount persis sama dengan jumlah item_details
     const itemsSum = cleanItems.reduce((acc: number, it: any) => acc + (it.price * it.quantity), 0);
     const amount = itemsSum > 0 ? itemsSum : Math.max(1, Math.round(Number(gross_amount) || 0));
 
@@ -107,7 +109,7 @@ const handleTokenizer = async (req: express.Request, res: express.Response) => {
       parameter.item_details = cleanItems;
     }
 
-    console.log(`[Midtrans API] Requesting Snap Token for Order ID: ${cleanOrderId}, Amount: Rp${amount}`);
+    console.log(`[Midtrans API] Requesting Snap Token for Order ID: ${cleanOrderId}, Phone: ${cleanPhone}, Amount: Rp${amount}`);
 
     // Try creating via Midtrans SDK first
     try {
@@ -145,11 +147,10 @@ const handleTokenizer = async (req: express.Request, res: express.Response) => {
 
       if (!apiResponse.ok || !responseData.token) {
         console.error("❌ [Midtrans REST API Error Output]:", JSON.stringify(responseData, null, 2));
-        throw new Error(
-          responseData?.error_messages
-            ? responseData.error_messages.join(", ")
-            : responseData?.message || `Midtrans API returned status ${apiResponse.status}`
-        );
+        const errMsg = responseData?.error_messages
+          ? responseData.error_messages.join(", ")
+          : responseData?.message || `Midtrans API returned status ${apiResponse.status}`;
+        throw new Error(errMsg);
       }
 
       console.log(`[Midtrans API] Snap Token created successfully via REST API:`, responseData.token);
@@ -161,14 +162,13 @@ const handleTokenizer = async (req: express.Request, res: express.Response) => {
     }
   } catch (error: any) {
     console.error("❌ [Midtrans API Tokenizer Error Details]:", {
-      message: error.message,
-      apiResponse: error.ApiResponse || error.response || error,
-      stack: error.stack,
+      message: error?.message,
+      stack: error?.stack,
     });
 
+    // 4. RESPONSE ERROR rapi { error: error.message } status 500
     return res.status(500).json({
-      error: "Failed to create transaction token",
-      message: error.message || "Terjadi kesalahan saat berkomunikasi dengan server Midtrans.",
+      error: error?.message || "Gagal memproses transaksi dengan Midtrans",
     });
   }
 };
