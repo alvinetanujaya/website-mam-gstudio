@@ -19,14 +19,23 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const body = req.body || {};
+    let body = req.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        body = {};
+      }
+    }
+    body = body || {};
+
     const order_id = body.order_id;
     const gross_amount = body.gross_amount;
     const customer_details = body.customer_details || body.customerDetails;
     const item_details = body.item_details || body.items;
 
-    const rawServerKey = process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || "";
-    const rawClientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || process.env.MIDTRANS_CLIENT_KEY || "";
+    const rawServerKey = process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || process.env.SERVER_KEY || "";
+    const rawClientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || process.env.MIDTRANS_CLIENT_KEY || process.env.CLIENT_KEY || "";
     
     const serverKey = (rawServerKey || "").trim().replace(/[\r\n]/g, "");
     const clientKey = (rawClientKey || "").trim().replace(/[\r\n]/g, "");
@@ -34,7 +43,7 @@ export default async function handler(req: any, res: any) {
 
     if (!serverKey) {
       return res.status(500).json({
-        error: "MIDTRANS_SERVER_KEY belum dikonfigurasi di environment variables.",
+        error: "MIDTRANS_SERVER_KEY belum dikonfigurasi di environment variables (Vercel / Secrets).",
       });
     }
 
@@ -42,17 +51,17 @@ export default async function handler(req: any, res: any) {
     const sanitizedOrderId = rawOrderId.replace(/[^a-zA-Z0-9-]/g, "").substring(0, 50);
     const cleanOrderId = sanitizedOrderId || `ORDER-${Date.now()}`;
 
-    const rawPhone = String(customer_details?.phone || customer_details?.whatsapp || customer_details?.phone_number || "").trim();
+    const rawPhone = String(customer_details?.phone || customer_details?.whatsapp || customer_details?.phone_number || body.phone || "").trim();
     const digitsOnlyPhone = rawPhone.replace(/[^0-9]/g, "");
     const cleanPhone = (digitsOnlyPhone && digitsOnlyPhone.length >= 10) 
       ? digitsOnlyPhone.substring(0, 15) 
       : "08123456789";
 
-    const rawName = String(customer_details?.name || customer_details?.first_name || "Pelanggan").trim();
+    const rawName = String(customer_details?.name || customer_details?.first_name || body.name || "Pelanggan").trim();
     const cleanFirstName = rawName.replace(/[^a-zA-Z0-9\s]/g, "").trim().substring(0, 50) || "Pelanggan";
-    const rawEmail = String(customer_details?.email || "").trim();
+    const rawEmail = String(customer_details?.email || body.email || "").trim();
     const cleanEmail = rawEmail.includes("@") ? rawEmail : "pelanggan@example.com";
-    const cleanAddress = String(customer_details?.address || "Alamat Pengiriman").trim().substring(0, 200) || "Alamat Pengiriman";
+    const cleanAddress = String(customer_details?.address || body.address || "Alamat Pengiriman").trim().substring(0, 200) || "Alamat Pengiriman";
 
     const cleanItems = (Array.isArray(item_details) && item_details.length > 0 ? item_details : []).map((item: any, idx: number) => {
       const rawId = String(item.id || `ITEM-${idx + 1}`).replace(/[^a-zA-Z0-9-]/g, "").substring(0, 50);
@@ -141,3 +150,4 @@ export default async function handler(req: any, res: any) {
     });
   }
 }
+

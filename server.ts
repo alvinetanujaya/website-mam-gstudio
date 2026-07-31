@@ -36,14 +36,23 @@ function getMidtransSnap() {
 const handleTokenizer = async (req: express.Request, res: express.Response) => {
   console.log(`[Express API Handler] ${req.method} ${req.originalUrl} triggered`);
   try {
-    const body = req.body || {};
+    let body = req.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch (e) {
+        body = {};
+      }
+    }
+    body = body || {};
+
     const order_id = body.order_id;
     const gross_amount = body.gross_amount;
     const customer_details = body.customer_details || body.customerDetails;
     const item_details = body.item_details || body.items;
 
     // 3. SANITASI SERVER KEY
-    const serverKey = (process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || "").trim().replace(/[\r\n]/g, "");
+    const serverKey = (process.env.MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVERKEY || process.env.SERVER_KEY || "").trim().replace(/[\r\n]/g, "");
 
     if (!serverKey) {
       console.error("[Midtrans API Error] Server key missing.");

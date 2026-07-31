@@ -1,8 +1,8 @@
 {
   "rewrites": [
-    { "source": "/api/checkout", "destination": "/api/checkout.ts" },
-    { "source": "/api/tokenizer", "destination": "/api/tokenizer.ts" },
-    { "source": "/api/payment", "destination": "/api/payment.ts" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ]
 }
