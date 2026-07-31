@@ -318,10 +318,11 @@ export default function App() {
 
   // Load Midtrans Snap Script dynamically
   useEffect(() => {
-    const clientKey =
+    const rawClientKey =
       import.meta.env.VITE_MIDTRANS_CLIENT_KEY ||
       import.meta.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY ||
-      "";
+      "SB-Mid-client-demo";
+    const clientKey = String(rawClientKey).trim();
     const isProduction =
       import.meta.env.VITE_MIDTRANS_IS_PRODUCTION === "true" ||
       import.meta.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true";
