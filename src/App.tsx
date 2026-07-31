@@ -428,8 +428,11 @@ export default function App() {
         },
       });
 
+      const backendBase = (import.meta.env.VITE_BACKEND_URL || "").trim().replace(/\/$/, "");
+      const targetUrl = backendBase ? `${backendBase}/api/checkout` : "/api/checkout";
+
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/checkout", true);
+      xhr.open("POST", targetUrl, true);
       xhr.setRequestHeader("Content-Type", "application/json");
 
       xhr.onreadystatechange = function () {
