@@ -318,29 +318,36 @@ export default function App() {
 
   // Load Midtrans Snap Script dynamically
   useEffect(() => {
-    const rawClientKey =
-      import.meta.env.VITE_MIDTRANS_CLIENT_KEY ||
-      import.meta.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY ||
-      "SB-Mid-client-demo";
-    const clientKey = String(rawClientKey).trim();
-    const isProduction =
-      import.meta.env.VITE_MIDTRANS_IS_PRODUCTION === "true" ||
-      import.meta.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true";
+    try {
+      const rawClientKey =
+        (import.meta.env &&
+          (import.meta.env.VITE_MIDTRANS_CLIENT_KEY ||
+            import.meta.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY)) ||
+        "SB-Mid-client-demo";
+      const clientKey = String(rawClientKey || "").trim();
 
-    const snapUrl = isProduction
-      ? "https://app.midtrans.com/snap/snap.js"
-      : "https://app.sandbox.midtrans.com/snap/snap.js";
+      const isProduction =
+        import.meta.env?.VITE_MIDTRANS_IS_PRODUCTION === "true" ||
+        import.meta.env?.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true";
 
-    const scriptId = "midtrans-snap-script";
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement("script");
-      script.id = scriptId;
-      script.src = snapUrl;
-      if (clientKey) {
-        script.setAttribute("data-client-key", clientKey);
+      const snapUrl = isProduction
+        ? "https://app.midtrans.com/snap/snap.js"
+        : "https://app.sandbox.midtrans.com/snap/snap.js";
+
+      const scriptId = "midtrans-snap-script";
+      let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+      if (!script) {
+        script = document.createElement("script");
+        script.id = scriptId;
+        script.src = snapUrl;
+        if (clientKey && clientKey.length > 0) {
+          script.setAttribute("data-client-key", clientKey);
+        }
+        script.async = true;
+        document.body.appendChild(script);
       }
-      script.async = true;
-      document.body.appendChild(script);
+    } catch (err) {
+      console.warn("Gagal memuat script Midtrans Snap:", err);
     }
   }, []);
 
@@ -348,15 +355,20 @@ export default function App() {
   const handlePayWithMidtrans = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
-    if (!customerDetails.fullName.trim()) {
+    const cleanName = String(customerDetails.fullName || "").trim();
+    const cleanAddress = String(customerDetails.deliveryAddress || "").trim();
+    const cleanDate = String(customerDetails.deliveryDate || "").trim();
+    const cleanNotes = String(customerDetails.notes || "").trim();
+
+    if (!cleanName) {
       alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
       return;
     }
-    if (!customerDetails.deliveryAddress.trim()) {
+    if (!cleanAddress) {
       alert("Silakan masukkan alamat lengkap pengiriman Anda.");
       return;
     }
-    if (!customerDetails.deliveryDate) {
+    if (!cleanDate) {
       alert("Silakan pilih tanggal pengiriman pesanan Anda.");
       return;
     }
@@ -390,10 +402,10 @@ export default function App() {
         body: JSON.stringify({
           gross_amount: grandTotal,
           customer_details: {
-            name: customerDetails.fullName,
-            address: customerDetails.deliveryAddress,
-            notes: customerDetails.notes,
-            delivery_date: customerDetails.deliveryDate,
+            name: cleanName,
+            address: cleanAddress,
+            notes: cleanNotes,
+            delivery_date: cleanDate,
           },
           item_details: itemDetails,
         }),
@@ -408,7 +420,7 @@ export default function App() {
       const snapToken = data.token;
       console.log("Midtrans Snap Token received:", snapToken);
 
-      if (window.snap) {
+      if (window.snap && typeof window.snap.pay === "function") {
         window.snap.pay(snapToken, {
           onSuccess: function (result: any) {
             console.log("Midtrans payment success:", result);
