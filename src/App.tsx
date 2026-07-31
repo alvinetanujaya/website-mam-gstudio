@@ -417,7 +417,7 @@ export default function App() {
         throw new Error(data.message || data.error || "Gagal membuat token transaksi.");
       }
 
-      const snapToken = data.token;
+      const snapToken = String(data.token).trim();
       console.log("Midtrans Snap Token received:", snapToken);
 
       if (window.snap && typeof window.snap.pay === "function") {
@@ -459,13 +459,14 @@ export default function App() {
           },
         });
       } else if (data.redirect_url) {
-        window.open(data.redirect_url, "_blank");
+        window.location.href = data.redirect_url;
       } else {
         alert("Modul Midtrans Snap belum siap. Silakan coba beberapa saat lagi.");
       }
     } catch (err: any) {
       console.error("Error initiating Midtrans payment:", err);
-      alert(`Gagal memproses pembayaran: ${err.message || "Terjadi kesalahan"}`);
+      const errorMessage = err?.message ? String(err.message) : String(err || "Terjadi kesalahan");
+      alert(`Gagal memproses pembayaran: ${errorMessage}`);
     } finally {
       setIsProcessingPayment(false);
     }
