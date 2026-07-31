@@ -360,6 +360,7 @@ export default function App() {
 
     try {
       const cleanName = String(customerDetails?.fullName || "").trim();
+      const cleanPhone = String(customerDetails?.phone || "").trim();
       const cleanAddress = String(customerDetails?.deliveryAddress || "").trim();
       const cleanDate = String(customerDetails?.deliveryDate || "").trim();
       const cleanNotes = String(customerDetails?.notes || "").trim();
@@ -380,35 +381,47 @@ export default function App() {
       setIsProcessingPayment(true);
       setToastMessage("Menyiapkan transaksi Midtrans Snap...");
 
-      const itemDetails = [
-        ...cart.map((item) => ({
-          id: String(`ITEM-${item.menuItem.id}`),
-          name: item.selectedOptions.length > 0 
-            ? String(`${item.menuItem.name} (+${item.selectedOptions.map(o => o.name).join(", ")})`)
-            : String(item.menuItem.name),
-          price: Number(item.unitPrice) || 0,
-          quantity: Number(item.quantity) || 1,
-        })),
-        {
-          id: "SHIPPING-FEE",
-          name: "Ongkos Kirim (Flat Rate)",
-          price: Number(SHIPPING_FEE) || 0,
-          quantity: 1,
-        }
-      ];
+      const itemsList = Array.isArray(cart) ? cart.map((item) => {
+        const itemId = String(item?.menuItem?.id || "");
+        const itemName = item?.selectedOptions && item.selectedOptions.length > 0
+          ? String(`${item?.menuItem?.name || ""} (+${item.selectedOptions.map((o: any) => o?.name || "").join(", ")})`)
+          : String(item?.menuItem?.name || "");
+        const itemPrice = Number(item?.unitPrice || 0);
+        const itemQty = Number(item?.quantity || 1);
+        return {
+          id: String(`ITEM-${itemId}`),
+          name: itemName,
+          price: itemPrice,
+          quantity: itemQty,
+        };
+      }) : [];
 
-      const paymentData = {
-        gross_amount: Number(grandTotal) || 0,
-        items: itemDetails,
-        item_details: itemDetails,
+      itemsList.push({
+        id: "SHIPPING-FEE",
+        name: "Ongkos Kirim (Flat Rate)",
+        price: Number(SHIPPING_FEE || 0),
+        quantity: 1,
+      });
+
+      const payload = {
+        name: cleanName,
+        phone: cleanPhone,
+        address: cleanAddress,
+        notes: cleanNotes,
+        selectedDate: cleanDate,
+        gross_amount: Number(grandTotal || 0),
+        items: itemsList,
+        item_details: itemsList,
         customerDetails: {
           name: cleanName,
+          phone: cleanPhone,
           address: cleanAddress,
           notes: cleanNotes,
           delivery_date: cleanDate,
         },
         customer_details: {
           name: cleanName,
+          phone: cleanPhone,
           address: cleanAddress,
           notes: cleanNotes,
           delivery_date: cleanDate,
@@ -422,7 +435,7 @@ export default function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(paymentData),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
