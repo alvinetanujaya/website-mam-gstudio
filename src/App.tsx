@@ -355,52 +355,53 @@ export default function App() {
   const handlePayWithMidtrans = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
-    const cleanName = String(customerDetails.fullName || "").trim();
-    const cleanAddress = String(customerDetails.deliveryAddress || "").trim();
-    const cleanDate = String(customerDetails.deliveryDate || "").trim();
-    const cleanNotes = String(customerDetails.notes || "").trim();
-
-    if (!cleanName) {
-      alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
-      return;
-    }
-    if (!cleanAddress) {
-      alert("Silakan masukkan alamat lengkap pengiriman Anda.");
-      return;
-    }
-    if (!cleanDate) {
-      alert("Silakan pilih tanggal pengiriman pesanan Anda.");
-      return;
-    }
-
-    setIsProcessingPayment(true);
-    setToastMessage("Menyiapkan transaksi Midtrans Snap...");
-
     try {
+      const cleanName = (customerDetails?.fullName ?? "").toString().trim();
+      const cleanAddress = (customerDetails?.deliveryAddress ?? "").toString().trim();
+      const cleanDate = (customerDetails?.deliveryDate ?? "").toString().trim();
+      const cleanNotes = (customerDetails?.notes ?? "").toString().trim();
+
+      if (!cleanName) {
+        alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
+        return;
+      }
+      if (!cleanAddress) {
+        alert("Silakan masukkan alamat lengkap pengiriman Anda.");
+        return;
+      }
+      if (!cleanDate) {
+        alert("Silakan pilih tanggal pengiriman pesanan Anda.");
+        return;
+      }
+
+      setIsProcessingPayment(true);
+      setToastMessage("Menyiapkan transaksi Midtrans Snap...");
+
       const itemDetails = [
         ...cart.map((item) => ({
-          id: `ITEM-${item.menuItem.id}`,
+          id: `ITEM-${item.menuItem.id}`.toString(),
           name: item.selectedOptions.length > 0 
-            ? `${item.menuItem.name} (+${item.selectedOptions.map(o => o.name).join(", ")})`
-            : item.menuItem.name,
-          price: item.unitPrice,
-          quantity: item.quantity,
+            ? `${item.menuItem.name} (+${item.selectedOptions.map(o => o.name).join(", ")})`.toString()
+            : item.menuItem.name.toString(),
+          price: Number(item.unitPrice) || 0,
+          quantity: Number(item.quantity) || 1,
         })),
         {
           id: "SHIPPING-FEE",
           name: "Ongkos Kirim (Flat Rate)",
-          price: SHIPPING_FEE,
+          price: Number(SHIPPING_FEE) || 0,
           quantity: 1,
         }
       ];
 
+      // Pure relative path string for API call
       const response = await fetch("/api/tokenizer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          gross_amount: grandTotal,
+          gross_amount: Number(grandTotal) || 0,
           customer_details: {
             name: cleanName,
             address: cleanAddress,
@@ -414,10 +415,10 @@ export default function App() {
       const data = await response.json();
 
       if (!response.ok || !data.token) {
-        throw new Error(data.message || data.error || "Gagal membuat token transaksi.");
+        throw new Error((data.message || data.error || "Gagal membuat token transaksi.").toString());
       }
 
-      const snapToken = String(data.token).trim();
+      const snapToken = (data.token ?? "").toString().trim();
       console.log("Midtrans Snap Token received:", snapToken);
 
       if (window.snap && typeof window.snap.pay === "function") {
@@ -459,14 +460,16 @@ export default function App() {
           },
         });
       } else if (data.redirect_url) {
-        window.location.href = data.redirect_url;
+        window.location.href = (data.redirect_url ?? "").toString();
       } else {
         alert("Modul Midtrans Snap belum siap. Silakan coba beberapa saat lagi.");
       }
     } catch (err: any) {
       console.error("Error initiating Midtrans payment:", err);
-      const errorMessage = err?.message ? String(err.message) : String(err || "Terjadi kesalahan");
-      alert(`Gagal memproses pembayaran: ${errorMessage}`);
+      const errName = err?.name ? String(err.name) : "Error";
+      const errMessage = err?.message ? String(err.message) : String(err || "Terjadi kesalahan");
+      const errStack = err?.stack ? String(err.stack) : "No stack trace available";
+      alert(`Error detail: ${errName} - ${errMessage}\nStack: ${errStack}`);
     } finally {
       setIsProcessingPayment(false);
     }

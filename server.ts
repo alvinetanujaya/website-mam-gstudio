@@ -174,6 +174,8 @@ const handleTokenizer = async (req: express.Request, res: express.Response) => {
 };
 
 app.post("/api/tokenizer", handleTokenizer);
+app.post("/api/payment", handleTokenizer);
+app.post("/api/checkout", handleTokenizer);
 app.post("/app/api/tokenizer", handleTokenizer); // Support Next.js App Router route alias request
 
 // 2. API Route: Notification Handler (Webhook)
