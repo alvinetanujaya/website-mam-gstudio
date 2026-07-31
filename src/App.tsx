@@ -397,26 +397,30 @@ export default function App() {
         }
       ];
 
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gross_amount: Number(grandTotal) || 0,
-          items: itemDetails,
-          item_details: itemDetails,
-          customerDetails: {
-            name: cleanName,
-            address: cleanAddress,
-            notes: cleanNotes,
-            delivery_date: cleanDate,
-          },
-          customer_details: {
-            name: cleanName,
-            address: cleanAddress,
-            notes: cleanNotes,
-            delivery_date: cleanDate,
-          }
-        }),
+      const paymentData = {
+        gross_amount: Number(grandTotal) || 0,
+        items: itemDetails,
+        item_details: itemDetails,
+        customerDetails: {
+          name: cleanName,
+          address: cleanAddress,
+          notes: cleanNotes,
+          delivery_date: cleanDate,
+        },
+        customer_details: {
+          name: cleanName,
+          address: cleanAddress,
+          notes: cleanNotes,
+          delivery_date: cleanDate,
+        },
+      };
+
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(paymentData),
       });
 
       const data = await res.json();
