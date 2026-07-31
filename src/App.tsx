@@ -415,7 +415,9 @@ export default function App() {
         },
       };
 
-      const res = await fetch('/api/checkout', {
+      const targetUrl = '/api/checkout';
+
+      const res = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -469,7 +471,8 @@ export default function App() {
         alert("Gagal mendapatkan token transaksi: " + String(data.message || data.error || "Gagal memproses pembayaran"));
       }
     } catch (err: any) {
-      alert("Fetch error: " + String(err?.message || err));
+      const targetUrl = '/api/checkout';
+      alert(`Fetch error pada URL [${targetUrl}]: ${err?.message || err}`);
     } finally {
       setIsProcessingPayment(false);
     }
