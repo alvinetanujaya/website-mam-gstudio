@@ -31,7 +31,10 @@ import {
   Award,
   ArrowUpRight,
   PieChart,
-  Clock
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Receipt
 } from "lucide-react";
 import { MenuItem, DbOrder } from "../types";
 import { 
@@ -70,6 +73,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Search & Filter state for Orders
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"daily_grouped" | "all_list">("daily_grouped");
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
+
+  // Quick lookup map for menu items by ID
+  const productMap = useMemo(() => {
+    const map: Record<number | string, MenuItem> = {};
+    menuItems.forEach((m) => {
+      map[m.id] = m;
+    });
+    return map;
+  }, [menuItems]);
 
   // Admin Authentication State
   const [isAdminAuth, setIsAdminAuth] = useState<boolean>(() => {
@@ -374,7 +389,94 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
     };
   }, [orders, menuItems]);
 
-  // Filtered Orders
+  // Group orders by Date (YYYY-MM-DD) for Daily Breakdown view
+  const groupedOrdersByDate = useMemo(() => {
+    const groups: Record<string, {
+      dateStr: string;
+      formattedDate: string;
+      orders: typeof orders;
+      totalRevenue: number;
+      totalOrders: number;
+      paidOrdersCount: number;
+      itemsSummary: Record<string, { name: string; qty: number; unitPrice: number; totalAmount: number }>;
+    }> = {};
+
+    orders.forEach((ord) => {
+      const rawDate = ord.created_at ? ord.created_at.split("T")[0] : new Date().toISOString().split("T")[0];
+      
+      if (!groups[rawDate]) {
+        const dObj = ord.created_at ? new Date(ord.created_at) : new Date();
+        const formatted = dObj.toLocaleDateString("id-ID", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric"
+        });
+        groups[rawDate] = {
+          dateStr: rawDate,
+          formattedDate: formatted,
+          orders: [],
+          totalRevenue: 0,
+          totalOrders: 0,
+          paidOrdersCount: 0,
+          itemsSummary: {}
+        };
+      }
+
+      // Check search & status filters
+      const matchesSearch =
+        searchQuery === "" ||
+        ord.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ord.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ord.customer_phone.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "paid" && (ord.status === "settlement" || ord.status === "success" || ord.status === "lunas")) ||
+        (statusFilter === "pending" && ord.status === "pending") ||
+        (statusFilter === "cancel" && (ord.status === "cancel" || ord.status === "expire" || ord.status === "deny"));
+
+      if (matchesSearch && matchesStatus) {
+        groups[rawDate].orders.push(ord);
+        groups[rawDate].totalOrders += 1;
+
+        const isPaid = ord.status === "settlement" || ord.status === "success" || ord.status === "lunas";
+        if (isPaid) {
+          groups[rawDate].totalRevenue += Number(ord.total_amount) || 0;
+          groups[rawDate].paidOrdersCount += 1;
+        }
+
+        // Aggregate items summary for the day
+        if (ord.items && Array.isArray(ord.items)) {
+          ord.items.forEach((item: any) => {
+            const pId = item.product_id || item.productId || item.id;
+            const menuItem = pId ? productMap[pId] : null;
+            const pName = item.name || (menuItem ? menuItem.name : `Produk #${pId || "Menu"}`);
+            const qty = Number(item.quantity) || 1;
+            const unitPrice = Number(item.price) || (menuItem ? menuItem.price : 0);
+
+            const key = `${pName}-${unitPrice}`;
+            if (!groups[rawDate].itemsSummary[key]) {
+              groups[rawDate].itemsSummary[key] = {
+                name: pName,
+                qty: 0,
+                unitPrice,
+                totalAmount: 0
+              };
+            }
+            groups[rawDate].itemsSummary[key].qty += qty;
+            groups[rawDate].itemsSummary[key].totalAmount += qty * unitPrice;
+          });
+        }
+      }
+    });
+
+    return Object.values(groups)
+      .filter((g) => g.orders.length > 0 && (dateFilter === "all" || g.dateStr === dateFilter))
+      .sort((a, b) => b.dateStr.localeCompare(a.dateStr));
+  }, [orders, searchQuery, statusFilter, dateFilter, productMap]);
+
+  // Filtered Orders for List View
   const filteredOrders = useMemo(() => {
     return orders.filter((ord) => {
       const matchesSearch =
@@ -388,9 +490,12 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
         (statusFilter === "pending" && ord.status === "pending") ||
         (statusFilter === "cancel" && (ord.status === "cancel" || ord.status === "expire" || ord.status === "deny"));
 
-      return matchesSearch && matchesStatus;
+      const orderDateStr = ord.created_at ? ord.created_at.split("T")[0] : "";
+      const matchesDate = dateFilter === "all" || orderDateStr === dateFilter;
+
+      return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [orders, searchQuery, statusFilter]);
+  }, [orders, searchQuery, statusFilter, dateFilter]);
 
   // CSV Accounting Export
   const exportOrdersCSV = () => {
@@ -1025,78 +1130,320 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                 </div>
               )}
 
-              {/* TAB 3: DAFTAR TRANSAKSI & PEMBUKUAN */}
+              {/* TAB 3: DAFTAR TRANSAKSI & PEMBUKUAN PER HARI */}
               {activeTab === "orders" && (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   
-                  {/* Search and Filters */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-warm-cream/40 p-3 rounded-2xl border border-outline-variant/15">
-                    <div className="relative flex-1">
-                      <Search className="w-4 h-4 absolute left-3 top-3 text-espresso-dark/40" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Cari ID Transaksi / Nama Pelanggan..."
-                        className="w-full pl-9 pr-4 py-2 rounded-xl bg-white border border-outline-variant/20 text-xs focus:outline-none focus:border-terracotta"
-                      />
+                  {/* Controls: Search, Filters & View Mode Selector */}
+                  <div className="flex flex-col space-y-3 bg-warm-cream/40 p-4 rounded-3xl border border-outline-variant/15 shadow-2xs">
+                    
+                    {/* Top Control Row */}
+                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                      
+                      {/* Search Bar */}
+                      <div className="relative flex-1">
+                        <Search className="w-4 h-4 absolute left-3.5 top-3 text-espresso-dark/40" />
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Cari ID Transaksi / Nama / No HP..."
+                          className="w-full pl-9 pr-4 py-2 rounded-xl bg-white border border-outline-variant/20 text-xs focus:outline-none focus:border-terracotta"
+                        />
+                      </div>
+
+                      {/* Filter Controls */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        
+                        {/* Status Filter */}
+                        <select
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value)}
+                          className="px-3 py-2 rounded-xl bg-white border border-outline-variant/20 text-xs font-semibold text-espresso-dark focus:outline-none cursor-pointer"
+                        >
+                          <option value="all">Semua Status</option>
+                          <option value="paid">Lunas (Settlement)</option>
+                          <option value="pending">Pending</option>
+                          <option value="cancel">Batal / Expire</option>
+                        </select>
+
+                        {/* Date Filter */}
+                        <select
+                          value={dateFilter}
+                          onChange={(e) => setDateFilter(e.target.value)}
+                          className="px-3 py-2 rounded-xl bg-white border border-outline-variant/20 text-xs font-semibold text-espresso-dark focus:outline-none cursor-pointer max-w-[180px] truncate"
+                        >
+                          <option value="all">Semua Tanggal</option>
+                          {groupedOrdersByDate.map((g) => (
+                            <option key={g.dateStr} value={g.dateStr}>
+                              {g.dateStr} ({g.totalOrders} Order)
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Action Buttons */}
+                        <button
+                          onClick={loadOrders}
+                          disabled={isLoadingOrders}
+                          className="p-2 rounded-xl bg-white border border-outline-variant/20 text-espresso-dark hover:bg-warm-cream transition-all shrink-0 cursor-pointer"
+                          title="Refresh Data"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${isLoadingOrders ? "animate-spin" : ""}`} />
+                        </button>
+
+                        <button
+                          onClick={exportOrdersCSV}
+                          className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer"
+                          title="Unduh CSV Pembukuan"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">CSV Pembukuan</span>
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        className="px-3 py-2 rounded-xl bg-white border border-outline-variant/20 text-xs font-semibold text-espresso-dark focus:outline-none cursor-pointer"
-                      >
-                        <option value="all">Semua Status</option>
-                        <option value="paid">Lunas (Settlement)</option>
-                        <option value="pending">Pending</option>
-                        <option value="cancel">Batal / Expire</option>
-                      </select>
+                    {/* View Mode Toggle Switch */}
+                    <div className="flex items-center justify-between border-t border-outline-variant/15 pt-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-espresso-dark/70">Tampilan Data:</span>
+                        <div className="flex bg-warm-cream p-1 rounded-xl border border-outline-variant/20">
+                          <button
+                            onClick={() => setViewMode("daily_grouped")}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              viewMode === "daily_grouped"
+                                ? "bg-terracotta text-white shadow-xs"
+                                : "text-espresso-dark/70 hover:text-espresso-dark"
+                            }`}
+                          >
+                            Kelompokkan Per Hari
+                          </button>
+                          <button
+                            onClick={() => setViewMode("all_list")}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              viewMode === "all_list"
+                                ? "bg-terracotta text-white shadow-xs"
+                                : "text-espresso-dark/70 hover:text-espresso-dark"
+                            }`}
+                          >
+                            Semua Transaksi List
+                          </button>
+                        </div>
+                      </div>
 
-                      <button
-                        onClick={loadOrders}
-                        disabled={isLoadingOrders}
-                        className="p-2 rounded-xl bg-white border border-outline-variant/20 text-espresso-dark hover:bg-warm-cream transition-all shrink-0 cursor-pointer"
-                        title="Refresh Data"
-                      >
-                        <RefreshCw className={`w-4 h-4 ${isLoadingOrders ? "animate-spin" : ""}`} />
-                      </button>
-
-                      <button
-                        onClick={exportOrdersCSV}
-                        className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs shrink-0 cursor-pointer"
-                        title="Unduh CSV Pembukuan"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">CSV</span>
-                      </button>
+                      <span className="text-[11px] font-mono font-bold text-espresso-dark/60 hidden sm:inline">
+                        Menampilkan {filteredOrders.length} transaksi
+                      </span>
                     </div>
+
                   </div>
 
+                  {/* Main Content Area */}
                   {isLoadingOrders ? (
                     <div className="text-center py-12 text-espresso-dark/50 text-xs">
                       <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-terracotta" />
-                      Memuat data pesanan dari Supabase...
+                      Memuat data transaksi dari Supabase...
                     </div>
                   ) : filteredOrders.length === 0 ? (
-                    <div className="text-center py-12 border border-dashed border-outline-variant/30 rounded-2xl bg-warm-cream/20">
+                    <div className="text-center py-12 border border-dashed border-outline-variant/30 rounded-3xl bg-warm-cream/20">
                       <ShoppingBag className="w-8 h-8 text-espresso-dark/30 mx-auto mb-2" />
                       <p className="text-xs font-bold text-espresso-dark/70">
-                        {orders.length === 0 ? "Belum ada pesanan tercatat di Supabase" : "Tidak ada pesanan yang sesuai filter"}
+                        {orders.length === 0 ? "Belum ada transaksi tercatat di Supabase" : "Tidak ada transaksi yang sesuai filter"}
                       </p>
                       <p className="text-[11px] text-espresso-dark/50 mt-1 max-w-sm mx-auto">
-                        Pesanan baru dari Midtrans / Checkout akan langsung tercatat di tabel orders Supabase.
+                        Pesanan baru dari Midtrans / Checkout akan otomatis tercatat di database live Supabase.
                       </p>
                     </div>
+                  ) : viewMode === "daily_grouped" ? (
+                    /* MODE 1: KELOMPOK PER HARI (DAILY BREAKDOWN) */
+                    <div className="space-y-4">
+                      {groupedOrdersByDate.map((group) => {
+                        const isExpanded = expandedDays[group.dateStr] !== false; // default expanded
+                        const itemSummaries = Object.values(group.itemsSummary);
+
+                        return (
+                          <div 
+                            key={group.dateStr} 
+                            className="bg-white rounded-3xl border border-outline-variant/20 shadow-2xs overflow-hidden transition-all"
+                          >
+                            {/* Day Header */}
+                            <div 
+                              onClick={() => setExpandedDays(prev => ({ ...prev, [group.dateStr]: !isExpanded }))}
+                              className="p-4 bg-gradient-to-r from-warm-cream/80 via-warm-cream/40 to-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-outline-variant/15 cursor-pointer hover:bg-warm-cream/60 transition-colors"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-2xl bg-terracotta text-white shadow-xs">
+                                  <Calendar className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <h4 className="text-sm font-black text-espresso-dark capitalize">
+                                    {group.formattedDate}
+                                  </h4>
+                                  <div className="flex items-center gap-2 text-xs text-espresso-dark/70 mt-0.5">
+                                    <span>{group.totalOrders} Order Masuk</span>
+                                    <span>•</span>
+                                    <span className="text-emerald-700 font-bold">{group.paidOrdersCount} Transaksi Lunas</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4">
+                                <div className="text-left sm:text-right">
+                                  <span className="text-[10px] uppercase font-bold text-espresso-dark/50 block">Total Omset Hari Ini</span>
+                                  <span className="text-base font-black text-terracotta font-mono">
+                                    {formatIDR(group.totalRevenue)}
+                                  </span>
+                                </div>
+
+                                <button 
+                                  type="button"
+                                  className="p-1.5 rounded-xl bg-white border border-outline-variant/20 text-espresso-dark hover:bg-warm-cream transition-colors"
+                                >
+                                  {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Expanded Day Details */}
+                            {isExpanded && (
+                              <div className="p-4 space-y-4 bg-white">
+                                
+                                {/* Daily Item Sales Summary Chips */}
+                                {itemSummaries.length > 0 && (
+                                  <div className="p-3 bg-warm-cream/30 rounded-2xl border border-outline-variant/15 space-y-2">
+                                    <span className="text-[11px] font-bold text-espresso-dark/70 uppercase tracking-wider block">
+                                      Ringkasan Menu Terjual Pada Tanggal Ini:
+                                    </span>
+                                    <div className="flex flex-wrap gap-2">
+                                      {itemSummaries.map((it: { name: string; qty: number; unitPrice: number; totalAmount: number }, idx: number) => (
+                                        <div key={idx} className="px-2.5 py-1 bg-white rounded-xl border border-outline-variant/20 text-xs flex items-center gap-2 shadow-2xs">
+                                          <span className="font-bold text-terracotta bg-terracotta/10 px-1.5 py-0.5 rounded text-[11px]">
+                                            {it.qty}x
+                                          </span>
+                                          <span className="font-semibold text-espresso-dark">{it.name}</span>
+                                          <span className="text-[10px] text-espresso-dark/50 font-mono">
+                                            ({formatIDR(it.unitPrice)}/porsi)
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Transactions List on this Date */}
+                                <div className="space-y-3">
+                                  {group.orders.map((ord) => {
+                                    const isSettled = ord.status === "settlement" || ord.status === "success" || ord.status === "lunas";
+                                    const isPending = ord.status === "pending";
+                                    const timeStr = ord.created_at ? new Date(ord.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
+
+                                    return (
+                                      <div key={ord.id} className="p-4 border border-outline-variant/20 rounded-2xl bg-white hover:border-terracotta/40 transition-all shadow-2xs space-y-3">
+                                        
+                                        {/* Order Top Meta */}
+                                        <div className="flex items-center justify-between text-xs border-b border-outline-variant/10 pb-2.5">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-mono font-bold text-terracotta bg-terracotta/5 px-2 py-0.5 rounded border border-terracotta/20">
+                                              {ord.id}
+                                            </span>
+                                            {timeStr && (
+                                              <span className="text-espresso-dark/60 text-[11px] font-medium flex items-center gap-1">
+                                                <Clock className="w-3 h-3 text-espresso-dark/40" />
+                                                Jam {timeStr} WIB
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className={`px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] ${
+                                            isSettled
+                                              ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
+                                              : isPending 
+                                              ? "bg-amber-100 text-amber-800 border border-amber-200" 
+                                              : "bg-gray-100 text-gray-700 border border-gray-200"
+                                          }`}>
+                                            {ord.status}
+                                          </span>
+                                        </div>
+
+                                        {/* Customer Info */}
+                                        <div className="flex justify-between items-start">
+                                          <div>
+                                            <p className="text-sm font-bold text-espresso-dark">{ord.customer_name}</p>
+                                            <p className="text-xs text-espresso-dark/60 font-mono mt-0.5">{ord.customer_phone}</p>
+                                          </div>
+                                          <div className="text-right">
+                                            <span className="text-[10px] text-espresso-dark/50 block uppercase tracking-wider">Total Pembayaran</span>
+                                            <span className="text-base font-black text-terracotta font-mono">
+                                              {formatIDR(Number(ord.total_amount))}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {/* Itemized Breakdown Table (Orderan Apa Aja, Banyak, Harga) */}
+                                        <div className="bg-warm-cream/30 p-3 rounded-2xl border border-outline-variant/15 text-xs space-y-2">
+                                          <span className="text-[10px] font-bold uppercase text-espresso-dark/60 tracking-wider flex items-center gap-1">
+                                            <Receipt className="w-3.5 h-3.5 text-terracotta" />
+                                            Rincian Item Dipesan (Orderan & Banyak Orderan):
+                                          </span>
+
+                                          {ord.items && Array.isArray(ord.items) && ord.items.length > 0 ? (
+                                            <div className="divide-y divide-outline-variant/10">
+                                              {ord.items.map((item: any, idx: number) => {
+                                                const pId = item.product_id || item.productId || item.id;
+                                                const menuItem = pId ? productMap[pId] : null;
+                                                const name = item.name || (menuItem ? menuItem.name : `Produk #${pId || "Menu"}`);
+                                                const qty = Number(item.quantity) || 1;
+                                                const price = Number(item.price) || (menuItem ? menuItem.price : 0);
+                                                const subtotal = qty * price;
+
+                                                return (
+                                                  <div key={idx} className="py-1.5 flex items-center justify-between text-xs text-espresso-dark">
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="font-extrabold text-terracotta bg-terracotta/10 px-2 py-0.5 rounded-lg text-[11px] font-mono">
+                                                        {qty}x
+                                                      </span>
+                                                      <span className="font-bold">{name}</span>
+                                                    </div>
+                                                    <div className="text-right font-mono text-xs">
+                                                      <span className="text-espresso-dark/60 text-[11px] mr-2">
+                                                        @{formatIDR(price)}
+                                                      </span>
+                                                      <span className="font-bold text-espresso-dark">
+                                                        = {formatIDR(subtotal)}
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          ) : (
+                                            <p className="text-[11px] text-espresso-dark/50 italic py-1">
+                                              Paket Catering Standar ({formatIDR(Number(ord.total_amount))})
+                                            </p>
+                                          )}
+                                        </div>
+
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                              </div>
+                            )}
+
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : (
+                    /* MODE 2: SEMUA LIST TRANSAKSI (FLAT LIST) */
                     <div className="space-y-3">
                       {filteredOrders.map((ord) => {
                         const isSettled = ord.status === "settlement" || ord.status === "success" || ord.status === "lunas";
                         const isPending = ord.status === "pending";
 
                         return (
-                          <div key={ord.id} className="p-4 border border-outline-variant/20 rounded-2xl bg-white shadow-2xs space-y-2">
+                          <div key={ord.id} className="p-4 border border-outline-variant/20 rounded-2xl bg-white shadow-2xs space-y-3">
+                            
+                            {/* Order Top Meta */}
                             <div className="flex items-center justify-between text-xs border-b border-outline-variant/10 pb-2.5">
                               <div className="flex items-center gap-2">
                                 <span className="font-mono font-bold text-terracotta bg-terracotta/5 px-2 py-0.5 rounded border border-terracotta/20">
@@ -1117,21 +1464,68 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                               </span>
                             </div>
 
-                            <div className="flex justify-between items-end pt-1">
+                            {/* Customer & Total */}
+                            <div className="flex justify-between items-end">
                               <div>
                                 <p className="text-sm font-bold text-espresso-dark">{ord.customer_name}</p>
                                 <p className="text-xs text-espresso-dark/60 font-mono mt-0.5">{ord.customer_phone}</p>
                               </div>
                               <div className="text-right">
                                 <span className="text-[10px] text-espresso-dark/50 block">Total Transaksi</span>
-                                <span className="text-sm font-black text-terracotta">{formatIDR(Number(ord.total_amount))}</span>
+                                <span className="text-base font-black text-terracotta font-mono">{formatIDR(Number(ord.total_amount))}</span>
                               </div>
                             </div>
+
+                            {/* Itemized Order Breakdown */}
+                            <div className="bg-warm-cream/30 p-3 rounded-2xl border border-outline-variant/15 text-xs space-y-1.5">
+                              <span className="text-[10px] font-bold uppercase text-espresso-dark/60 tracking-wider flex items-center gap-1">
+                                <Receipt className="w-3.5 h-3.5 text-terracotta" />
+                                Detail Items Dipesan & Harga:
+                              </span>
+
+                              {ord.items && Array.isArray(ord.items) && ord.items.length > 0 ? (
+                                <div className="divide-y divide-outline-variant/10">
+                                  {ord.items.map((item: any, idx: number) => {
+                                    const pId = item.product_id || item.productId || item.id;
+                                    const menuItem = pId ? productMap[pId] : null;
+                                    const name = item.name || (menuItem ? menuItem.name : `Produk #${pId || "Menu"}`);
+                                    const qty = Number(item.quantity) || 1;
+                                    const price = Number(item.price) || (menuItem ? menuItem.price : 0);
+                                    const subtotal = qty * price;
+
+                                    return (
+                                      <div key={idx} className="py-1 flex items-center justify-between text-xs text-espresso-dark">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-bold text-terracotta bg-terracotta/10 px-1.5 py-0.5 rounded text-[11px] font-mono">
+                                            {qty}x
+                                          </span>
+                                          <span className="font-semibold">{name}</span>
+                                        </div>
+                                        <div className="text-right font-mono text-xs">
+                                          <span className="text-espresso-dark/60 text-[11px] mr-2">
+                                            @{formatIDR(price)}
+                                          </span>
+                                          <span className="font-bold text-espresso-dark">
+                                            = {formatIDR(subtotal)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-espresso-dark/50 italic py-0.5">
+                                  Paket Catering Standar ({formatIDR(Number(ord.total_amount))})
+                                </p>
+                              )}
+                            </div>
+
                           </div>
                         );
                       })}
                     </div>
                   )}
+
                 </div>
               )}
 
