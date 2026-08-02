@@ -32,6 +32,7 @@ import {
 import { MENU_ITEMS, CUSTOMIZATION_OPTIONS, FAQS } from "./data";
 import { MenuItem, CustomizationOption, CartItem, CustomerDetails } from "./types";
 import { MamLogo } from "./components/MamLogo";
+import { AdminDashboard } from "./components/AdminDashboard";
 import { 
   isSupabaseConfigured, 
   fetchProductsFromSupabase, 
@@ -48,6 +49,54 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [isBottomCartExpanded, setIsBottomCartExpanded] = useState<boolean>(false);
   const [isCartBouncing, setIsCartBouncing] = useState<boolean>(false);
+
+  // Hidden Admin Dashboard State
+  const [isAdminOpen, setIsAdminOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const searchParams = new URLSearchParams(window.location.search);
+    const isQueryAdmin = searchParams.get("admin") === "true" || searchParams.get("dashboard") === "admin";
+    const isPathAdmin = window.location.pathname.startsWith("/admin");
+    const isHashAdmin = window.location.hash === "#admin";
+    return isQueryAdmin || isPathAdmin || isHashAdmin;
+  });
+
+  const [copyrightClicks, setCopyrightClicks] = useState<number>(0);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Secret Shortcut: Ctrl + Shift + A to open Admin Dashboard
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setIsAdminOpen((prev) => !prev);
+      }
+    };
+
+    const handlePopState = () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const isQueryAdmin = searchParams.get("admin") === "true" || searchParams.get("dashboard") === "admin";
+      const isPathAdmin = window.location.pathname.startsWith("/admin");
+      const isHashAdmin = window.location.hash === "#admin";
+      if (isQueryAdmin || isPathAdmin || isHashAdmin) {
+        setIsAdminOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
+  const handleCopyrightClick = () => {
+    const next = copyrightClicks + 1;
+    setCopyrightClicks(next);
+    if (next >= 3) {
+      setIsAdminOpen(true);
+      setCopyrightClicks(0);
+    }
+  };
 
   // Dynamic Menu Items State with Supabase stock integration
   const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
@@ -2011,7 +2060,13 @@ export default function App() {
         </div>
 
         <div className="max-w-7xl mx-auto pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-soft-cream/40">
-          <span>&copy; {new Date().getFullYear()} MAM Culinary Heritage. Hak Cipta Dilindungi.</span>
+          <span 
+            onClick={handleCopyrightClick} 
+            className="cursor-pointer select-none hover:text-soft-cream/60 transition-colors"
+            title="MAM Culinary Heritage"
+          >
+            &copy; {new Date().getFullYear()} MAM Culinary Heritage. Hak Cipta Dilindungi.
+          </span>
           <div className="flex gap-4">
             <a href="#" className="hover:text-soft-cream transition-colors">Kebijakan Privasi</a>
             <a href="#" className="hover:text-soft-cream transition-colors">Ketentuan Layanan</a>
@@ -2243,6 +2298,15 @@ export default function App() {
           <span className="tracking-wide uppercase text-xs md:text-sm font-extrabold">Order Now</span>
         </motion.button>
       )}
+
+      {/* Hidden Admin Dashboard Component */}
+      <AdminDashboard
+        isOpen={isAdminOpen}
+        onClose={() => setIsAdminOpen(false)}
+        menuItems={menuItems}
+        onRefreshMenu={loadSupabaseProducts}
+        formatIDR={formatIDR}
+      />
     </div>
   );
 }
