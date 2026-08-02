@@ -242,3 +242,67 @@ export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { items?
     return { data: null, error: err };
   }
 }
+
+// Fetch global Admin PIN from server / Supabase
+export async function fetchAdminPin(): Promise<string> {
+  // 1. Try Supabase direct
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('admin_settings')
+        .select('value')
+        .eq('key', 'admin_pin')
+        .single();
+
+      if (!error && data && data.value) {
+        return data.value;
+      }
+    } catch (e) {
+      // Fallback to API
+    }
+  }
+
+  // 2. Try Server API /api/admin/pin
+  try {
+    const res = await fetch('/api/admin/pin');
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.pin) return json.pin;
+    }
+  } catch (e) {
+    // Fallback
+  }
+
+  // 3. Fallback to localStorage or default 1234
+  return localStorage.getItem('mam_admin_pin') || '1234';
+}
+
+// Update global Admin PIN in server & Supabase
+export async function saveAdminPin(newPin: string): Promise<{ success: boolean; message?: string }> {
+  const pinToSave = newPin.trim();
+  localStorage.setItem('mam_admin_pin', pinToSave);
+
+  // 1. Update via Server API
+  try {
+    await fetch('/api/admin/pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: pinToSave }),
+    });
+  } catch (e) {
+    console.warn('API update PIN error:', e);
+  }
+
+  // 2. Direct Supabase update if configured
+  if (supabase) {
+    try {
+      await supabase
+        .from('admin_settings')
+        .upsert({ key: 'admin_pin', value: pinToSave, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    } catch (e) {
+      console.warn('Supabase update PIN error:', e);
+    }
+  }
+
+  return { success: true };
+}

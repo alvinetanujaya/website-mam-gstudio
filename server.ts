@@ -343,6 +343,59 @@ const handleGetProducts = async (req: express.Request, res: express.Response) =>
 app.get("/api/products", handleGetProducts);
 app.get("/app/api/products", handleGetProducts);
 
+// Global server in-memory Admin PIN (synced with Supabase admin_settings)
+let serverAdminPin = "1234";
+
+// API Route: Get Admin PIN
+const handleGetAdminPin = async (req: express.Request, res: express.Response) => {
+  try {
+    const supabase = getSupabaseServerClient();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "admin_pin")
+        .single();
+
+      if (!error && data && data.value) {
+        serverAdminPin = data.value;
+      }
+    }
+    return res.json({ pin: serverAdminPin });
+  } catch (err) {
+    return res.json({ pin: serverAdminPin });
+  }
+};
+
+// API Route: Update Admin PIN
+const handleUpdateAdminPin = async (req: express.Request, res: express.Response) => {
+  try {
+    const { pin } = req.body || {};
+    if (!pin || typeof pin !== "string" || pin.trim().length < 4) {
+      return res.status(400).json({ error: "PIN harus minimal 4 karakter" });
+    }
+
+    const newPin = pin.trim();
+    serverAdminPin = newPin;
+
+    const supabase = getSupabaseServerClient();
+    if (supabase) {
+      await supabase
+        .from("admin_settings")
+        .upsert({ key: "admin_pin", value: newPin, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    }
+
+    return res.json({ success: true, pin: newPin });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || "Gagal memperbarui PIN Admin" });
+  }
+};
+
+app.get("/api/admin/pin", handleGetAdminPin);
+app.post("/api/admin/pin", handleUpdateAdminPin);
+app.get("/app/api/admin/pin", handleGetAdminPin);
+app.post("/app/api/admin/pin", handleUpdateAdminPin);
+
 // 2. API Route: Notification Handler (Webhook)
 const handleNotification = async (req: express.Request, res: express.Response) => {
   try {

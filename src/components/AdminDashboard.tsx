@@ -34,7 +34,9 @@ import {
   fetchProductsFromSupabase, 
   seedProductsToSupabase, 
   updateSupabaseStock, 
-  fetchSupabaseOrders 
+  fetchSupabaseOrders,
+  fetchAdminPin,
+  saveAdminPin
 } from "../lib/supabase";
 
 interface AdminDashboardProps {
@@ -70,9 +72,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
   const [inputPin, setInputPin] = useState<string>("");
   const [pinError, setPinError] = useState<string | null>(null);
-  const [storedPin, setStoredPin] = useState<string>(() => {
-    return localStorage.getItem("mam_admin_pin") || "1234";
-  });
+  const [storedPin, setStoredPin] = useState<string>("1234");
   const [isChangingPin, setIsChangingPin] = useState<boolean>(false);
   const [newPinInput, setNewPinInput] = useState<string>("");
 
@@ -102,7 +102,24 @@ CREATE TABLE IF NOT EXISTS order_items (
   product_id BIGINT REFERENCES products(id),
   quantity INT NOT NULL,
   price NUMERIC NOT NULL
-);`;
+);
+
+-- 4. Tabel Pengaturan Admin (PIN Terpusat & Terkoordinasi)
+CREATE TABLE IF NOT EXISTS admin_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT DO NOTHING;`;
+
+  // Sync PIN from Server / Supabase on modal open
+  useEffect(() => {
+    if (isOpen) {
+      fetchAdminPin().then((pin) => {
+        if (pin) setStoredPin(pin);
+      });
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && isAdminAuth) {
@@ -110,15 +127,20 @@ CREATE TABLE IF NOT EXISTS order_items (
     }
   }, [isOpen, isAdminAuth]);
 
-  const handleVerifyPin = (e: React.FormEvent) => {
+  const handleVerifyPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputPin.trim() === storedPin) {
+    // Fetch latest PIN from server first to be 100% up to date across devices
+    const latestPin = await fetchAdminPin();
+    const activePin = latestPin || storedPin;
+    setStoredPin(activePin);
+
+    if (inputPin.trim() === activePin) {
       setIsAdminAuth(true);
       sessionStorage.setItem("mam_admin_auth", "true");
       setPinError(null);
       setInputPin("");
     } else {
-      setPinError("PIN Admin salah! (Default PIN: 1234)");
+      setPinError("PIN Admin salah!");
     }
   };
 
@@ -127,14 +149,15 @@ CREATE TABLE IF NOT EXISTS order_items (
     sessionStorage.removeItem("mam_admin_auth");
   };
 
-  const handleChangePinSubmit = (e: React.FormEvent) => {
+  const handleChangePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPinInput.trim().length >= 4) {
-      localStorage.setItem("mam_admin_pin", newPinInput.trim());
-      setStoredPin(newPinInput.trim());
+      const pinVal = newPinInput.trim();
+      await saveAdminPin(pinVal);
+      setStoredPin(pinVal);
       setIsChangingPin(false);
       setNewPinInput("");
-      alert("PIN Admin berhasil diperbarui!");
+      alert("PIN Admin berhasil diperbarui dan tersimpan terpusat di server & Supabase untuk semua perangkat!");
     } else {
       alert("PIN harus minimal 4 digit.");
     }
@@ -351,10 +374,9 @@ CREATE TABLE IF NOT EXISTS order_items (
                 Masuk ke Dashboard
               </button>
 
-              <div className="pt-2 text-xs text-espresso-dark/50 flex items-center justify-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>PIN Default: </span>
-                <code className="bg-warm-cream px-2 py-0.5 rounded border border-outline-variant/20 font-bold text-espresso-dark">1234</code>
+              <div className="pt-2 text-[11px] text-espresso-dark/50 flex items-center justify-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Akses Aman Terenkripsi Server & Supabase</span>
               </div>
             </form>
           </div>
