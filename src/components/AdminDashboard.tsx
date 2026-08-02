@@ -26,7 +26,12 @@ import {
   LogOut,
   Calendar,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  Flame,
+  Award,
+  ArrowUpRight,
+  PieChart,
+  Clock
 } from "lucide-react";
 import { MenuItem, DbOrder } from "../types";
 import { 
@@ -242,26 +247,83 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
     setTimeout(() => setCopiedSql(false), 2000);
   };
 
-  // Financial Statistics Calculation
-  const stats = useMemo(() => {
+  // Detailed Financial, Daily Trend & Product Sales Analytics
+  const { stats, dailyStats, topSellingItems } = useMemo(() => {
     let totalRevenue = 0;
     let todayRevenue = 0;
     let countSettlement = 0;
     let countPending = 0;
     let countCanceled = 0;
+    let todayOrdersCount = 0;
+    let todayPaidOrdersCount = 0;
 
     const todayStr = new Date().toISOString().split("T")[0];
+    const dailyMap: Record<string, { date: string; formattedDate: string; totalOrders: number; paidOrders: number; revenue: number }> = {};
+    const itemSalesMap: Record<number | string, { id: number | string; name: string; category?: string; image?: string; price: number; quantitySold: number; totalRevenue: number; stock: number }> = {};
+
+    // Initialize itemSalesMap with all current catalog menu items
+    menuItems.forEach((menu) => {
+      itemSalesMap[menu.id] = {
+        id: menu.id,
+        name: menu.name,
+        category: menu.category,
+        image: menu.image,
+        price: menu.price,
+        quantitySold: 0,
+        totalRevenue: 0,
+        stock: menu.stock ?? 50
+      };
+    });
 
     orders.forEach((ord) => {
       const isPaid = ord.status === "settlement" || ord.status === "success" || ord.status === "lunas";
       const amount = Number(ord.total_amount) || 0;
+      const orderDateStr = ord.created_at ? ord.created_at.split("T")[0] : todayStr;
+
+      // Grouping Daily Statistics
+      if (!dailyMap[orderDateStr]) {
+        const dObj = ord.created_at ? new Date(ord.created_at) : new Date();
+        const formatted = dObj.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+        dailyMap[orderDateStr] = { date: orderDateStr, formattedDate: formatted, totalOrders: 0, paidOrders: 0, revenue: 0 };
+      }
+      dailyMap[orderDateStr].totalOrders += 1;
+
+      if (orderDateStr === todayStr) {
+        todayOrdersCount += 1;
+      }
 
       if (isPaid) {
         totalRevenue += amount;
         countSettlement += 1;
+        dailyMap[orderDateStr].paidOrders += 1;
+        dailyMap[orderDateStr].revenue += amount;
 
-        if (ord.created_at && ord.created_at.startsWith(todayStr)) {
+        if (orderDateStr === todayStr) {
           todayRevenue += amount;
+          todayPaidOrdersCount += 1;
+        }
+
+        // Calculate item-level sales from order items
+        if (ord.items && Array.isArray(ord.items) && ord.items.length > 0) {
+          ord.items.forEach((item: any) => {
+            const pId = item.product_id || item.productId || item.id;
+            const qty = Number(item.quantity) || 1;
+            const itemPrice = Number(item.price) || (pId && itemSalesMap[pId] ? itemSalesMap[pId].price : 0);
+
+            if (pId && itemSalesMap[pId]) {
+              itemSalesMap[pId].quantitySold += qty;
+              itemSalesMap[pId].totalRevenue += qty * itemPrice;
+            } else if (pId) {
+              itemSalesMap[pId] = {
+                id: pId,
+                name: item.name || `Produk #${pId}`,
+                price: itemPrice,
+                quantitySold: qty,
+                totalRevenue: qty * itemPrice,
+                stock: 0
+              };
+            }
+          });
         }
       } else if (ord.status === "pending") {
         countPending += 1;
@@ -270,15 +332,47 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
       }
     });
 
+    // Convert dailyMap to chronological daily array
+    const dailyStatsArr = Object.values(dailyMap)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-10);
+
+    const maxDailyRevenue = dailyStatsArr.reduce((max, d) => Math.max(max, d.revenue), 1);
+
+    // Convert itemSalesMap to sorted array by quantity sold
+    const topItemsArr = Object.values(itemSalesMap)
+      .sort((a, b) => b.quantitySold - a.quantitySold || b.totalRevenue - a.totalRevenue);
+
+    const maxQtySold = topItemsArr.reduce((max, item) => Math.max(max, item.quantitySold), 1);
+    const topSeller = topItemsArr.length > 0 && topItemsArr[0].quantitySold > 0 ? topItemsArr[0] : null;
+
+    const avgOrderValue = countSettlement > 0 ? Math.round(totalRevenue / countSettlement) : 0;
+    const settlementRate = orders.length > 0 ? Math.round((countSettlement / orders.length) * 100) : 0;
+
     return {
-      totalOrders: orders.length,
-      totalRevenue,
-      todayRevenue,
-      countSettlement,
-      countPending,
-      countCanceled
+      stats: {
+        totalOrders: orders.length,
+        todayOrdersCount,
+        todayPaidOrdersCount,
+        totalRevenue,
+        todayRevenue,
+        countSettlement,
+        countPending,
+        countCanceled,
+        avgOrderValue,
+        settlementRate,
+        topSeller
+      },
+      dailyStats: dailyStatsArr.map(d => ({
+        ...d,
+        barPercentage: maxDailyRevenue > 0 ? Math.max(8, Math.round((d.revenue / maxDailyRevenue) * 100)) : 8
+      })),
+      topSellingItems: topItemsArr.map((item) => ({
+        ...item,
+        percentage: maxQtySold > 0 ? Math.round((item.quantitySold / maxQtySold) * 100) : 0
+      }))
     };
-  }, [orders]);
+  }, [orders, menuItems]);
 
   // Filtered Orders
   const filteredOrders = useMemo(() => {
@@ -528,56 +622,243 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
 
               {/* TAB 1: RINGKASAN KEUANGAN & PEMBUKUAN */}
               {activeTab === "overview" && (
-                <div className="space-y-5">
+                <div className="space-y-6">
                   
-                  {/* Financial KPI Cards Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white shadow-md relative overflow-hidden">
-                      <div className="absolute -right-4 -bottom-4 opacity-15">
-                        <DollarSign className="w-28 h-28" />
+                  {/* Financial KPI Highlights Cards Grid (4 Cards) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* 1. Total Omset Lunas */}
+                    <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-800 text-white shadow-md relative overflow-hidden flex flex-col justify-between min-h-[135px]">
+                      <div className="absolute -right-3 -bottom-3 opacity-15">
+                        <DollarSign className="w-24 h-24" />
                       </div>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-emerald-100 block mb-1">
-                        Total Omset / Lunas
-                      </span>
-                      <h4 className="text-2xl sm:text-3xl font-black">
-                        {formatIDR(stats.totalRevenue)}
-                      </h4>
-                      <p className="text-[11px] text-emerald-100 mt-2 flex items-center gap-1">
-                        <TrendingUp className="w-3.5 h-3.5" />
-                        <span>{stats.countSettlement} transaksi lunas tercatat</span>
-                      </p>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-100">
+                            Total Omset / Lunas
+                          </span>
+                          <span className="p-1.5 bg-emerald-500/30 rounded-lg text-emerald-200">
+                            <TrendingUp className="w-4 h-4" />
+                          </span>
+                        </div>
+                        <h4 className="text-2xl font-black tracking-tight">
+                          {formatIDR(stats.totalRevenue)}
+                        </h4>
+                      </div>
+                      <div className="pt-2 border-t border-emerald-400/20 text-[11px] text-emerald-100 flex items-center justify-between">
+                        <span>Rata-rata Order (AOV):</span>
+                        <span className="font-bold font-mono">{formatIDR(stats.avgOrderValue)}</span>
+                      </div>
                     </div>
 
-                    <div className="p-5 rounded-2xl bg-gradient-to-br from-terracotta to-amber-700 text-white shadow-md relative overflow-hidden">
-                      <div className="absolute -right-4 -bottom-4 opacity-15">
-                        <Calendar className="w-28 h-28" />
+                    {/* 2. Omset Hari Ini */}
+                    <div className="p-5 rounded-2xl bg-gradient-to-br from-terracotta via-amber-700 to-terracotta-dark text-white shadow-md relative overflow-hidden flex flex-col justify-between min-h-[135px]">
+                      <div className="absolute -right-3 -bottom-3 opacity-15">
+                        <Calendar className="w-24 h-24" />
                       </div>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-100 block mb-1">
-                        Pendapatan Hari Ini
-                      </span>
-                      <h4 className="text-2xl sm:text-3xl font-black">
-                        {formatIDR(stats.todayRevenue)}
-                      </h4>
-                      <p className="text-[11px] text-amber-100 mt-2">
-                        Pemesanan masuk tanggal hari ini
-                      </p>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-100">
+                            Omset Hari Ini
+                          </span>
+                          <span className="p-1.5 bg-amber-500/30 rounded-lg text-amber-200">
+                            <Clock className="w-4 h-4" />
+                          </span>
+                        </div>
+                        <h4 className="text-2xl font-black tracking-tight">
+                          {formatIDR(stats.todayRevenue)}
+                        </h4>
+                      </div>
+                      <div className="pt-2 border-t border-amber-400/20 text-[11px] text-amber-100 flex items-center justify-between">
+                        <span>Lunas Hari Ini:</span>
+                        <span className="font-bold">{stats.todayPaidOrdersCount} Transaksi</span>
+                      </div>
                     </div>
 
-                    <div className="p-5 rounded-2xl bg-gradient-to-br from-espresso-dark to-espresso text-white shadow-md relative overflow-hidden">
-                      <div className="absolute -right-4 -bottom-4 opacity-15">
-                        <ShoppingBag className="w-28 h-28" />
+                    {/* 3. Pesanan Hari Ini vs Total */}
+                    <div className="p-5 rounded-2xl bg-gradient-to-br from-espresso-dark via-espresso to-espresso-dark text-white shadow-md relative overflow-hidden flex flex-col justify-between min-h-[135px]">
+                      <div className="absolute -right-3 -bottom-3 opacity-15">
+                        <ShoppingBag className="w-24 h-24" />
                       </div>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-white/70 block mb-1">
-                        Total Pesanan Masuk
-                      </span>
-                      <h4 className="text-2xl sm:text-3xl font-black">
-                        {stats.totalOrders} <span className="text-sm font-normal text-white/60">Order</span>
-                      </h4>
-                      <div className="flex items-center gap-3 text-[11px] text-white/80 mt-2">
-                        <span className="text-emerald-400 font-bold">{stats.countSettlement} Lunas</span>
-                        <span>•</span>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-white/70">
+                            Pesanan Hari Ini / Total
+                          </span>
+                          <span className="p-1.5 bg-white/10 rounded-lg text-amber-400">
+                            <ShoppingBag className="w-4 h-4" />
+                          </span>
+                        </div>
+                        <h4 className="text-2xl font-black tracking-tight flex items-baseline gap-2">
+                          {stats.todayOrdersCount} <span className="text-sm font-semibold text-white/60">Hari ini</span>
+                          <span className="text-xs text-white/40">/ {stats.totalOrders} Total</span>
+                        </h4>
+                      </div>
+                      <div className="pt-2 border-t border-white/10 text-[11px] text-white/80 flex items-center justify-between">
+                        <span className="text-emerald-400 font-bold">{stats.countSettlement} Lunas ({stats.settlementRate}%)</span>
                         <span className="text-amber-400 font-bold">{stats.countPending} Pending</span>
                       </div>
+                    </div>
+
+                    {/* 4. Menu Paling Laris (Top Seller Highlight) */}
+                    <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 text-white shadow-md relative overflow-hidden flex flex-col justify-between min-h-[135px]">
+                      <div className="absolute -right-3 -bottom-3 opacity-20">
+                        <Award className="w-24 h-24" />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-100 flex items-center gap-1">
+                            <Flame className="w-3.5 h-3.5 text-amber-200 fill-amber-200 animate-pulse" />
+                            Menu Terlaris Utama
+                          </span>
+                          <span className="p-1.5 bg-white/20 rounded-lg text-white">
+                            <Award className="w-4 h-4" />
+                          </span>
+                        </div>
+                        <h4 className="text-lg font-black tracking-tight truncate leading-snug">
+                          {stats.topSeller ? stats.topSeller.name : "Belum Ada"}
+                        </h4>
+                      </div>
+                      <div className="pt-2 border-t border-white/20 text-[11px] text-amber-100 flex items-center justify-between">
+                        <span>Total Terjual:</span>
+                        <span className="font-bold text-white bg-black/20 px-2 py-0.5 rounded-full">
+                          {stats.topSeller ? `${stats.topSeller.quantitySold} Porsi` : "0 Porsi"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Daily Revenue & Order Trend Bar Chart */}
+                  <div className="p-5 bg-white rounded-3xl border border-outline-variant/20 shadow-2xs space-y-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-sm font-bold text-espresso-dark flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4 text-terracotta" />
+                          Tren Omzet & Transaksi Per Hari
+                        </h4>
+                        <p className="text-xs text-espresso-dark/60 mt-0.5">
+                          Grafik omset harian otomatis terakumulasi dari transaksi Supabase
+                        </p>
+                      </div>
+                      <span className="text-[11px] bg-warm-cream px-3 py-1 rounded-full font-bold text-espresso-dark border border-outline-variant/20">
+                        10 Hari Terakhir
+                      </span>
+                    </div>
+
+                    {dailyStats.length === 0 ? (
+                      <div className="text-center py-8 text-espresso-dark/50 text-xs bg-warm-cream/30 rounded-2xl border border-dashed border-outline-variant/20">
+                        Belum ada riwayat omzet harian tercatat.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Visual Bar Chart */}
+                        <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 items-end h-36 pt-4 px-2 border-b border-outline-variant/15 pb-2">
+                          {dailyStats.map((d, idx) => (
+                            <div key={idx} className="flex flex-col items-center gap-1.5 h-full justify-end group relative cursor-pointer">
+                              {/* Tooltip Hover */}
+                              <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-all bg-espresso-dark text-white text-[10px] py-1 px-2 rounded-lg shadow-md whitespace-nowrap z-20 pointer-events-none">
+                                <span className="font-bold block">{d.formattedDate}</span>
+                                <span className="text-emerald-300 font-mono">{formatIDR(d.revenue)}</span>
+                                <span className="block text-[9px] text-white/70">{d.paidOrders} Lunas / {d.totalOrders} Order</span>
+                              </div>
+
+                              <div 
+                                className="w-full bg-gradient-to-t from-terracotta via-amber-500 to-amber-400 rounded-t-xl transition-all duration-300 group-hover:brightness-110 shadow-xs"
+                                style={{ height: `${d.barPercentage}%` }}
+                              ></div>
+                              <span className="text-[10px] font-bold text-espresso-dark/70 font-mono truncate w-full text-center">
+                                {d.formattedDate}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Daily Summary Table */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                          {dailyStats.slice(-4).map((d, idx) => (
+                            <div key={idx} className="p-2.5 bg-warm-cream/40 rounded-xl border border-outline-variant/15 text-xs flex justify-between items-center">
+                              <div>
+                                <span className="font-bold text-espresso-dark block text-[11px]">{d.formattedDate}</span>
+                                <span className="text-[10px] text-espresso-dark/60">{d.paidOrders} Transaksi Lunas</span>
+                              </div>
+                              <span className="font-mono font-black text-terracotta text-xs">{formatIDR(d.revenue)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Top Selling Menu Analytics */}
+                  <div className="p-5 bg-white rounded-3xl border border-outline-variant/20 shadow-2xs space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-espresso-dark flex items-center gap-2">
+                          <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
+                          Peringkat Menu Paling Laris (Top Sellers)
+                        </h4>
+                        <p className="text-xs text-espresso-dark/60 mt-0.5">
+                          Urutan item menu berdasarkan jumlah porsi terjual dari transaksi pelanggan
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setActiveTab("stock")}
+                        className="text-xs text-terracotta font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        Kelola Stok Menu
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {topSellingItems.slice(0, 5).map((item, idx) => {
+                        const isOut = (item.stock ?? 0) <= 0;
+                        return (
+                          <div key={item.id} className="p-3.5 bg-warm-cream/20 hover:bg-warm-cream/40 rounded-2xl border border-outline-variant/15 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 w-full sm:w-auto">
+                              <div className="w-6 h-6 rounded-full bg-espresso-dark text-white font-bold text-xs flex items-center justify-center shrink-0">
+                                #{idx + 1}
+                              </div>
+                              <img 
+                                src={item.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=200"} 
+                                alt={item.name} 
+                                className="w-12 h-12 rounded-xl object-cover border border-outline-variant/20 shrink-0" 
+                              />
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h5 className="text-sm font-bold text-espresso-dark">{item.name}</h5>
+                                  {item.category && (
+                                    <span className="text-[10px] px-2 py-0.5 bg-warm-cream rounded-full font-semibold text-espresso-dark/70 border border-outline-variant/20">
+                                      {item.category}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-espresso-dark/60 mt-0.5">
+                                  <span>{formatIDR(item.price)}</span>
+                                  <span>•</span>
+                                  <span className={isOut ? "text-red-600 font-bold" : "text-emerald-700 font-bold"}>
+                                    Sisa Stok: {item.stock ?? 50}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between sm:justify-end w-full sm:w-64 gap-4">
+                              <div className="w-full space-y-1">
+                                <div className="flex justify-between text-[11px] font-bold text-espresso-dark">
+                                  <span>{item.quantitySold} Porsi Terjual</span>
+                                  <span className="text-terracotta font-mono">{formatIDR(item.totalRevenue)}</span>
+                                </div>
+                                <div className="w-full bg-outline-variant/20 h-2 rounded-full overflow-hidden">
+                                  <div 
+                                    className="bg-gradient-to-r from-terracotta to-amber-500 h-full rounded-full transition-all duration-500"
+                                    style={{ width: `${Math.max(5, item.percentage)}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -599,48 +880,6 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                       <Download className="w-4 h-4" />
                       Unduh CSV Pembukuan
                     </button>
-                  </div>
-
-                  {/* Stock Overview Summary */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-espresso-dark/60">
-                        Ringkasan Stok Produk Catering
-                      </h4>
-                      <button
-                        onClick={() => setActiveTab("stock")}
-                        className="text-xs text-terracotta font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        Kelola Stok Lengkap
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {menuItems.slice(0, 4).map((item) => {
-                        const stockVal = item.stock ?? 50;
-                        const isOut = stockVal <= 0;
-                        return (
-                          <div key={item.id} className="p-3.5 bg-white rounded-2xl border border-outline-variant/20 shadow-2xs space-y-2">
-                            <div className="flex items-center gap-2.5">
-                              <img src={item.image} alt={item.name} className="w-8 h-8 rounded-lg object-cover" />
-                              <div className="overflow-hidden">
-                                <h5 className="text-xs font-bold text-espresso-dark truncate">{item.name}</h5>
-                                <span className="text-[10px] text-espresso-dark/60 block">{formatIDR(item.price)}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between pt-1 border-t border-outline-variant/10 text-xs">
-                              <span className="text-[11px] text-espresso-dark/50">Sisa Stok:</span>
-                              <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${
-                                isOut ? "bg-red-100 text-red-700" : stockVal < 10 ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
-                              }`}>
-                                {isOut ? "Habis" : `${stockVal} unit`}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
                   </div>
 
                 </div>

@@ -222,18 +222,34 @@ export async function updateSupabaseStock(productId: number, newStock: number): 
   }
 }
 
-// Fetch order history from Supabase
-export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { items?: DbOrderItem[] })[] | null; error: any }> {
+// Fetch order history from Supabase with order_items
+export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { order_items?: DbOrderItem[]; items?: DbOrderItem[] })[] | null; error: any }> {
   if (!supabase) {
     return { data: null, error: new Error('Supabase tidak terhubung') };
   }
 
   try {
+    // 1. Try selecting orders with joined order_items
+    const { data: ordersWithItems, error: joinErr } = await supabase
+      .from('orders')
+      .select('*, order_items(*)')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (!joinErr && ordersWithItems) {
+      const formatted = ordersWithItems.map((ord: any) => ({
+        ...ord,
+        items: ord.order_items || ord.items || []
+      }));
+      return { data: formatted, error: null };
+    }
+
+    // 2. Fallback to selecting orders alone if order_items join fails
     const { data: orders, error: ordersErr } = await supabase
       .from('orders')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(100);
 
     if (ordersErr) {
       return { data: null, error: ordersErr };
