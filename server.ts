@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import dotenv from "dotenv";
 import midtransClient from "midtrans-client";
 import { createServer as createViteServer } from "vite";
@@ -343,12 +344,33 @@ const handleGetProducts = async (req: express.Request, res: express.Response) =>
 app.get("/api/products", handleGetProducts);
 app.get("/app/api/products", handleGetProducts);
 
-// Global server in-memory Admin PIN (synced with Supabase admin_settings)
-let serverAdminPin = "1234";
+// Persistent Admin PIN Storage (File + Supabase)
+const PIN_FILE_PATH = path.join(process.cwd(), "admin_pin.txt");
+
+function getStoredPinFromFile(): string {
+  try {
+    if (fs.existsSync(PIN_FILE_PATH)) {
+      const pin = fs.readFileSync(PIN_FILE_PATH, "utf-8").trim();
+      if (pin && pin.length >= 4) return pin;
+    }
+  } catch (e) {
+    console.warn("Failed to read PIN file:", e);
+  }
+  return "1234";
+}
+
+function savePinToFile(pin: string) {
+  try {
+    fs.writeFileSync(PIN_FILE_PATH, pin.trim(), "utf-8");
+  } catch (e) {
+    console.warn("Failed to write PIN file:", e);
+  }
+}
 
 // API Route: Get Admin PIN
 const handleGetAdminPin = async (req: express.Request, res: express.Response) => {
   try {
+    let currentPin = getStoredPinFromFile();
     const supabase = getSupabaseServerClient();
     if (supabase) {
       const { data, error } = await supabase
@@ -358,12 +380,13 @@ const handleGetAdminPin = async (req: express.Request, res: express.Response) =>
         .single();
 
       if (!error && data && data.value) {
-        serverAdminPin = data.value;
+        currentPin = data.value;
+        savePinToFile(currentPin);
       }
     }
-    return res.json({ pin: serverAdminPin });
+    return res.json({ pin: currentPin });
   } catch (err) {
-    return res.json({ pin: serverAdminPin });
+    return res.json({ pin: getStoredPinFromFile() });
   }
 };
 
@@ -376,13 +399,16 @@ const handleUpdateAdminPin = async (req: express.Request, res: express.Response)
     }
 
     const newPin = pin.trim();
-    serverAdminPin = newPin;
+    savePinToFile(newPin);
 
     const supabase = getSupabaseServerClient();
     if (supabase) {
-      await supabase
+      const { error } = await supabase
         .from("admin_settings")
         .upsert({ key: "admin_pin", value: newPin, updated_at: new Date().toISOString() }, { onConflict: "key" });
+      if (error) {
+        console.warn("Supabase admin_settings upsert note:", error.message);
+      }
     }
 
     return res.json({ success: true, pin: newPin });
