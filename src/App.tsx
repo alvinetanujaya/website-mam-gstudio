@@ -26,11 +26,18 @@ import {
   Calendar,
   AlertCircle,
   CreditCard,
-  Receipt
+  Receipt,
+  Lock
 } from "lucide-react";
 import { MENU_ITEMS, CUSTOMIZATION_OPTIONS, FAQS } from "./data";
 import { MenuItem, CustomizationOption, CartItem, CustomerDetails } from "./types";
 import { MamLogo } from "./components/MamLogo";
+import { 
+  isSupabaseConfigured, 
+  fetchProductsFromSupabase, 
+  recordSupabaseOrder,
+  subscribeToProducts
+} from "./lib/supabase";
 import heroSapiLadaHitam from "./assets/images/regenerated_image_1785694387233.png";
 
 export default function App() {
@@ -41,6 +48,49 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [isBottomCartExpanded, setIsBottomCartExpanded] = useState<boolean>(false);
   const [isCartBouncing, setIsCartBouncing] = useState<boolean>(false);
+
+  // Dynamic Menu Items State with Supabase stock integration
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
+
+  // Function to sync products/stock from Supabase
+  const loadSupabaseProducts = async () => {
+    const res = await fetchProductsFromSupabase();
+    if (res && res.data && res.data.length > 0) {
+      setMenuItems((prevItems) =>
+        prevItems.map((item) => {
+          const matched = res.data.find((p) => p.id === item.id || p.name.toLowerCase() === item.name.toLowerCase());
+          if (matched) {
+            return {
+              ...item,
+              id: Number(matched.id) || item.id,
+              price: Number(matched.price) || item.price,
+              stock: matched.stock ?? 50,
+            };
+          }
+          return item;
+        })
+      );
+    }
+  };
+
+  useEffect(() => {
+    loadSupabaseProducts();
+
+    // Subscribe to realtime stock updates
+    const channel = subscribeToProducts(() => {
+      loadSupabaseProducts();
+    });
+
+    // Also poll every 5s as a fallback
+    const interval = setInterval(() => {
+      loadSupabaseProducts();
+    }, 5000);
+
+    return () => {
+      if (channel) channel.unsubscribe();
+      clearInterval(interval);
+    };
+  }, []);
 
   const triggerCartAnimation = () => {
     setIsCartBouncing(true);
@@ -177,9 +227,9 @@ export default function App() {
 
   // Helper: Find current active category items
   const filteredMenu = useMemo(() => {
-    if (activeCategory === "Semua") return MENU_ITEMS;
-    return MENU_ITEMS.filter((item) => item.category === activeCategory);
-  }, [activeCategory]);
+    if (activeCategory === "Semua") return menuItems;
+    return menuItems.filter((item) => item.category === activeCategory);
+  }, [activeCategory, menuItems]);
 
   // Flat shipping fee (Ongkos Kirim Flat)
   const SHIPPING_FEE = 15000;
@@ -223,9 +273,25 @@ export default function App() {
     return selectedItem.price + customizationsCost;
   }, [selectedItem, selectedCustomizations]);
 
-  // Add Item to Cart from Detail Modal
+  // Add Item to Cart from Detail Modal with stock check
   const handleAddToCartFromModal = () => {
     if (!selectedItem) return;
+
+    const availableStock = selectedItem.stock ?? 50;
+    if (availableStock <= 0) {
+      setToastMessage(`Maaf, stok ${selectedItem.name} sedang habis.`);
+      return;
+    }
+
+    // Check existing count in cart
+    const existingInCart = cart
+      .filter((c) => c.menuItem.id === selectedItem.id)
+      .reduce((sum, c) => sum + c.quantity, 0);
+
+    if (existingInCart + modalQuantity > availableStock) {
+      setToastMessage(`Stok ${selectedItem.name} terbatas! Sisa stok: ${availableStock}`);
+      return;
+    }
 
     // Generate unique ID based on item ID + sorted customization names
     const sortedOptNames = [...selectedCustomizations].map((o) => o.name).sort();
@@ -254,8 +320,23 @@ export default function App() {
     setSelectedItem(null);
   };
 
-  // Quick Direct Add to Cart from Catalog
+  // Quick Direct Add to Cart from Catalog with stock check
   const handleQuickAdd = (item: MenuItem) => {
+    const availableStock = item.stock ?? 50;
+    if (availableStock <= 0) {
+      setToastMessage(`Maaf, stok ${item.name} sedang habis.`);
+      return;
+    }
+
+    const existingInCart = cart
+      .filter((c) => c.menuItem.id === item.id)
+      .reduce((sum, c) => sum + c.quantity, 0);
+
+    if (existingInCart + 1 > availableStock) {
+      setToastMessage(`Stok ${item.name} terbatas! Sisa stok: ${availableStock}`);
+      return;
+    }
+
     const cartItemId = `${item.id}-`; // base with no customizations
     const newCartItem: CartItem = {
       id: cartItemId,
@@ -279,13 +360,18 @@ export default function App() {
     triggerCartAnimation();
   };
 
-  // Update Cart quantities (plus/minus) on Summary screen or widgets
+  // Update Cart quantities (plus/minus) on Summary screen or widgets with stock check
   const handleUpdateCartQuantity = (id: string, change: number) => {
     setCart((prevCart) => {
       return prevCart
         .map((item) => {
           if (item.id === id) {
+            const availableStock = item.menuItem.stock ?? 50;
             const nextQty = item.quantity + change;
+            if (change > 0 && nextQty > availableStock) {
+              setToastMessage(`Stok ${item.menuItem.name} maksimal ${availableStock} porsi.`);
+              return item;
+            }
             return { ...item, quantity: nextQty };
           }
           return item;
@@ -442,25 +528,45 @@ export default function App() {
           if (xhr.status === 200) {
             try {
               const data = JSON.parse(xhr.responseText);
+              const orderId = data.order_id || `ORDER-${Date.now()}`;
+
+              // Record order & decrement stock in Supabase directly from client
+              recordSupabaseOrder({
+                orderId: orderId,
+                customerName: cleanName,
+                customerPhone: cleanPhone,
+                totalAmount: grandTotal,
+                status: "pending",
+                items: cart.map((c) => ({
+                  productId: c.menuItem.id,
+                  quantity: c.quantity,
+                  price: c.unitPrice,
+                })),
+              }).then(() => {
+                loadSupabaseProducts();
+              });
+
               if (data.token && window.snap && typeof window.snap.pay === "function") {
                 window.snap.pay(data.token, {
                   onSuccess: function (result: any) {
                     console.log("Midtrans payment success:", result);
                     setCart([]);
+                    loadSupabaseProducts();
                     setPaymentResult({
                       show: true,
                       status: "success",
-                      orderId: data.order_id || result?.order_id,
+                      orderId: orderId || result?.order_id,
                       message: "Pembayaran Anda berhasil terverifikasi! Pesanan segera disiapkan.",
                     });
                     setToastMessage("Pembayaran Berhasil! Terima kasih.");
                   },
                   onPending: function (result: any) {
                     console.log("Midtrans payment pending:", result);
+                    loadSupabaseProducts();
                     setPaymentResult({
                       show: true,
                       status: "pending",
-                      orderId: data.order_id || result?.order_id,
+                      orderId: orderId || result?.order_id,
                       message: "Pesanan berhasil disimpan. Silakan selesaikan pembayaran sesuai instruksi.",
                     });
                     setToastMessage("Menunggu pembayaran (Pending).");
@@ -609,30 +715,32 @@ export default function App() {
             <MamLogo className="h-7 md:h-8 text-espresso-dark hover:text-terracotta transition-colors" />
           </motion.div>
 
-          {/* Cart Icon Toggle with count Badge */}
-          <motion.button
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.92 }}
-            animate={
-              isCartBouncing
-                ? {
-                    scale: [1, 1.35, 0.9, 1.2, 0.95, 1.1, 1],
-                    rotate: [0, -18, 18, -12, 12, -6, 0],
-                  }
-                : { scale: 1, rotate: 0 }
-            }
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            onClick={() => setCurrentTab("checkout")}
-            className="text-espresso-dark hover:text-terracotta p-2 -mr-2 transition-colors duration-200 relative cursor-pointer"
-            aria-label="Keranjang Belanja"
-          >
-            <ShoppingBag className="w-6 h-6" />
-            {totalItemsCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-terracotta text-soft-cream text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-soft-cream animate-pulse">
-                {totalItemsCount}
-              </span>
-            )}
-          </motion.button>
+          <div className="flex items-center gap-2">
+            {/* Cart Icon Toggle with count Badge */}
+            <motion.button
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
+              animate={
+                isCartBouncing
+                  ? {
+                      scale: [1, 1.35, 0.9, 1.2, 0.95, 1.1, 1],
+                      rotate: [0, -18, 18, -12, 12, -6, 0],
+                    }
+                  : { scale: 1, rotate: 0 }
+              }
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              onClick={() => setCurrentTab("checkout")}
+              className="text-espresso-dark hover:text-terracotta p-2 -mr-2 transition-colors duration-200 relative cursor-pointer"
+              aria-label="Keranjang Belanja"
+            >
+              <ShoppingBag className="w-6 h-6" />
+              {totalItemsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-terracotta text-soft-cream text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-soft-cream animate-pulse">
+                  {totalItemsCount}
+                </span>
+              )}
+            </motion.button>
+          </div>
         </div>
       </header>
 
@@ -876,89 +984,117 @@ export default function App() {
                 ref={homeMenuScrollRef}
                 className="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-8 pt-3 px-1 hide-scrollbar scroll-smooth"
               >
-                {MENU_ITEMS.map((item, index) => (
-                  <motion.div
-                    key={item.id}
-                    initial={{ opacity: 0, y: 24, scale: 0.95 }}
-                    whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                    viewport={{ once: true, margin: "-30px" }}
-                    transition={{
-                      duration: 0.5,
-                      delay: index * 0.07,
-                      ease: [0.25, 0.1, 0.25, 1.0],
-                    }}
-                    whileHover={{ 
-                      y: -8, 
-                      scale: 1.015,
-                      transition: { duration: 0.25, ease: "easeOut" }
-                    }}
-                    className="flex-none w-[280px] sm:w-[320px] md:w-[350px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-[0_16px_36px_rgba(44,27,18,0.12)] border border-outline-variant/25 transition-all duration-300 flex flex-col group relative"
-                  >
-                    {item.featured && (
-                      <motion.div 
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.2 + index * 0.05 }}
-                        className="absolute top-4 left-4 bg-terracotta text-soft-cream font-bold text-xs uppercase tracking-wider px-3 py-1 rounded-lg z-10 flex items-center gap-1 shadow-md border border-white/20"
-                      >
-                        <Star className="w-3.5 h-3.5 fill-current animate-pulse" />
-                        <span>Best Seller</span>
-                      </motion.div>
-                    )}
+                {menuItems.map((item, index) => {
+                  const itemStock = item.stock ?? 50;
+                  const isOut = itemStock <= 0;
 
-                    <div 
-                      onClick={() => handleOpenDetail(item)}
-                      className="relative overflow-hidden cursor-pointer bg-espresso-dark/5 shrink-0 w-full h-48 md:h-52"
+                  return (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, y: 24, scale: 0.95 }}
+                      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                      viewport={{ once: true, margin: "-30px" }}
+                      transition={{
+                        duration: 0.5,
+                        delay: index * 0.07,
+                        ease: [0.25, 0.1, 0.25, 1.0],
+                      }}
+                      whileHover={{ 
+                        y: -8, 
+                        scale: 1.015,
+                        transition: { duration: 0.25, ease: "easeOut" }
+                      }}
+                      className="flex-none w-[280px] sm:w-[320px] md:w-[350px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-[0_16px_36px_rgba(44,27,18,0.12)] border border-outline-variant/25 transition-all duration-300 flex flex-col group relative"
                     >
-                      <img
-                        className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700 ease-out"
-                        alt={item.name}
-                        src={item.image}
-                      />
-                      <div className="absolute inset-0 bg-espresso-dark/25 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center backdrop-blur-xs">
-                        <motion.span 
-                          whileHover={{ scale: 1.08 }}
-                          className="bg-white/95 text-espresso-dark px-4 py-2 rounded-full font-bold text-xs shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300"
+                      {item.featured && (
+                        <motion.div 
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.2 + index * 0.05 }}
+                          className="absolute top-4 left-4 bg-terracotta text-soft-cream font-bold text-xs uppercase tracking-wider px-3 py-1 rounded-lg z-10 flex items-center gap-1 shadow-md border border-white/20"
                         >
-                          Lihat Detail
-                        </motion.span>
-                      </div>
-                    </div>
+                          <Star className="w-3.5 h-3.5 fill-current animate-pulse" />
+                          <span>Best Seller</span>
+                        </motion.div>
+                      )}
 
-                    <div className="p-5 flex flex-col justify-between flex-grow">
-                      <div>
-                        <span className="text-xs text-terracotta font-bold uppercase tracking-wider block mb-1">
-                          {item.category}
-                        </span>
-                        <h3 
-                          onClick={() => handleOpenDetail(item)}
-                          className="text-lg font-bold text-espresso-dark hover:text-terracotta transition-colors cursor-pointer leading-snug line-clamp-2"
-                        >
-                          {item.name}
-                        </h3>
-                        <p className="text-xs text-espresso-dark/70 mt-1 mb-3 leading-relaxed line-clamp-2">
-                          {item.desc}
-                        </p>
+                      <div 
+                        onClick={() => handleOpenDetail(item)}
+                        className="relative overflow-hidden cursor-pointer bg-espresso-dark/5 shrink-0 w-full h-48 md:h-52"
+                      >
+                        <img
+                          className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700 ease-out"
+                          alt={item.name}
+                          src={item.image}
+                        />
+
+                        {/* Stock badge overlay */}
+                        <div className="absolute bottom-3 right-3 z-10">
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shadow-xs backdrop-blur-md ${
+                              isOut
+                                ? "bg-red-600/90 text-white border-red-500"
+                                : itemStock < 10
+                                ? "bg-amber-500/90 text-white border-amber-400"
+                                : "bg-black/60 text-white border-white/20"
+                            }`}
+                          >
+                            {isOut ? "Stok Habis" : `Stok: ${itemStock}`}
+                          </span>
+                        </div>
+
+                        <div className="absolute inset-0 bg-espresso-dark/25 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center backdrop-blur-xs">
+                          <motion.span 
+                            whileHover={{ scale: 1.08 }}
+                            className="bg-white/95 text-espresso-dark px-4 py-2 rounded-full font-bold text-xs shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300"
+                          >
+                            Lihat Detail
+                          </motion.span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-3 border-t border-outline-variant/20 mt-auto">
-                        <span className="text-base font-extrabold text-terracotta">
-                          {formatIDR(item.price)}
-                        </span>
-                        
-                        <motion.button
-                          whileHover={{ scale: 1.1, backgroundColor: "#D35400", color: "#FDFBF7" }}
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => handleQuickAdd(item)}
-                          className="bg-terracotta/10 text-terracotta font-bold px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 flex items-center gap-1 cursor-pointer shadow-xs"
-                        >
-                          <Plus className="w-3.5 h-3.5 shrink-0" />
-                          <span>Tambah</span>
-                        </motion.button>
+                      <div className="p-5 flex flex-col justify-between flex-grow">
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-terracotta font-bold uppercase tracking-wider">
+                              {item.category}
+                            </span>
+                          </div>
+                          <h3 
+                            onClick={() => handleOpenDetail(item)}
+                            className="text-lg font-bold text-espresso-dark hover:text-terracotta transition-colors cursor-pointer leading-snug line-clamp-2"
+                          >
+                            {item.name}
+                          </h3>
+                          <p className="text-xs text-espresso-dark/70 mt-1 mb-3 leading-relaxed line-clamp-2">
+                            {item.desc}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-3 border-t border-outline-variant/20 mt-auto">
+                          <span className="text-base font-extrabold text-terracotta">
+                            {formatIDR(item.price)}
+                          </span>
+                          
+                          <motion.button
+                            whileHover={{ scale: 1.1, backgroundColor: "#D35400", color: "#FDFBF7" }}
+                            whileTap={{ scale: 0.92 }}
+                            onClick={() => handleQuickAdd(item)}
+                            disabled={isOut}
+                            className={`font-bold px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 flex items-center gap-1 cursor-pointer shadow-xs ${
+                              isOut 
+                                ? "bg-gray-200 text-gray-400 cursor-not-allowed" 
+                                : "bg-terracotta/10 text-terracotta"
+                            }`}
+                          >
+                            <Plus className="w-3.5 h-3.5 shrink-0" />
+                            <span>{isOut ? "Habis" : "Tambah"}</span>
+                          </motion.button>
+                        </div>
                       </div>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </div>
             </section>
 
@@ -1319,75 +1455,101 @@ export default function App() {
               ref={menuScrollRef}
               className="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-8 pt-2 hide-scrollbar scroll-smooth"
             >
-              {filteredMenu.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex-none w-[280px] sm:w-[320px] md:w-[360px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-xl hover:-translate-y-1 border border-outline-variant/25 transition-all duration-300 flex flex-col group relative"
-                >
-                  {/* Best Seller Overlay badge */}
-                  {item.featured && (
-                    <div className="absolute top-4 left-4 bg-terracotta text-soft-cream font-bold text-xs uppercase tracking-wider px-3 py-1.5 rounded-lg z-10 flex items-center gap-1 shadow-sm">
-                      <Star className="w-3.5 h-3.5 fill-current" />
-                      <span>Best Seller</span>
-                    </div>
-                  )}
+              {filteredMenu.map((item) => {
+                const itemStock = item.stock ?? 50;
+                const isOut = itemStock <= 0;
 
-                  {/* Product Image Clickable to trigger detail modal */}
-                  <div 
-                    onClick={() => handleOpenDetail(item)}
-                    className="relative overflow-hidden cursor-pointer bg-espresso-dark/5 shrink-0 w-full h-48 md:h-52"
+                return (
+                  <div
+                    key={item.id}
+                    className="flex-none w-[280px] sm:w-[320px] md:w-[360px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-xl hover:-translate-y-1 border border-outline-variant/25 transition-all duration-300 flex flex-col group relative"
                   >
-                    <img
-                      className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
-                      alt={item.name}
-                      src={item.image}
-                    />
-                    <div className="absolute inset-0 bg-espresso-dark/15 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-xs">
-                      <span className="bg-white/95 text-espresso-dark px-4 py-2 rounded-full font-bold text-xs shadow-md">
-                        Lihat Detail & Tambahan
-                      </span>
-                    </div>
-                  </div>
+                    {/* Best Seller Overlay badge */}
+                    {item.featured && (
+                      <div className="absolute top-4 left-4 bg-terracotta text-soft-cream font-bold text-xs uppercase tracking-wider px-3 py-1.5 rounded-lg z-10 flex items-center gap-1 shadow-sm">
+                        <Star className="w-3.5 h-3.5 fill-current" />
+                        <span>Best Seller</span>
+                      </div>
+                    )}
 
-                  {/* Food Card details */}
-                  <div className="p-6 flex flex-col justify-between flex-grow">
-                    <div>
-                      <span className="text-xs text-terracotta font-bold uppercase tracking-wider block mb-1">
-                        {item.category}
-                      </span>
-                      <h3 
-                        onClick={() => handleOpenDetail(item)}
-                        className="text-xl font-bold text-espresso-dark hover:text-terracotta transition-colors cursor-pointer leading-snug line-clamp-2"
-                      >
-                        {item.name}
-                      </h3>
-                      <p className="text-xs md:text-sm text-espresso-dark/70 mt-2 mb-4 leading-relaxed line-clamp-2">
-                        {item.desc}
-                      </p>
-                    </div>
+                    {/* Product Image Clickable to trigger detail modal */}
+                    <div 
+                      onClick={() => handleOpenDetail(item)}
+                      className="relative overflow-hidden cursor-pointer bg-espresso-dark/5 shrink-0 w-full h-48 md:h-52"
+                    >
+                      <img
+                        className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                        alt={item.name}
+                        src={item.image}
+                      />
 
-                    {/* Bottom row: Price tag & actions */}
-                    <div className="flex items-center justify-between pt-4 border-t border-outline-variant/20 mt-auto">
-                      <span className="text-lg md:text-xl font-extrabold text-terracotta">
-                        {formatIDR(item.price)}
-                      </span>
-                      
-                      <div className="flex items-center gap-2">
-                        {/* Quick Add Button */}
-                        <motion.button
-                          whileHover={{ scale: 1.08 }}
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => handleQuickAdd(item)}
-                          className="bg-terracotta/10 text-terracotta hover:bg-terracotta hover:text-soft-cream font-bold px-4 py-2 rounded-full text-xs md:text-sm transition-all duration-200 flex items-center gap-1.5 cursor-pointer shadow-xs hover:shadow-md"
+                      {/* Stock badge overlay */}
+                      <div className="absolute bottom-3 right-3 z-10">
+                        <span
+                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shadow-xs backdrop-blur-md ${
+                            isOut
+                              ? "bg-red-600/90 text-white border-red-500"
+                              : itemStock < 10
+                              ? "bg-amber-500/90 text-white border-amber-400"
+                              : "bg-black/60 text-white border-white/20"
+                          }`}
                         >
-                          <Plus className="w-4 h-4 shrink-0" />
-                          <span>Tambah</span>
-                        </motion.button>
+                          {isOut ? "Stok Habis" : `Stok: ${itemStock}`}
+                        </span>
+                      </div>
+
+                      <div className="absolute inset-0 bg-espresso-dark/15 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-xs">
+                        <span className="bg-white/95 text-espresso-dark px-4 py-2 rounded-full font-bold text-xs shadow-md">
+                          Lihat Detail & Tambahan
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Food Card details */}
+                    <div className="p-6 flex flex-col justify-between flex-grow">
+                      <div>
+                        <span className="text-xs text-terracotta font-bold uppercase tracking-wider block mb-1">
+                          {item.category}
+                        </span>
+                        <h3 
+                          onClick={() => handleOpenDetail(item)}
+                          className="text-xl font-bold text-espresso-dark hover:text-terracotta transition-colors cursor-pointer leading-snug line-clamp-2"
+                        >
+                          {item.name}
+                        </h3>
+                        <p className="text-xs md:text-sm text-espresso-dark/70 mt-2 mb-4 leading-relaxed line-clamp-2">
+                          {item.desc}
+                        </p>
+                      </div>
+
+                      {/* Bottom row: Price tag & actions */}
+                      <div className="flex items-center justify-between pt-4 border-t border-outline-variant/20 mt-auto">
+                        <span className="text-lg md:text-xl font-extrabold text-terracotta">
+                          {formatIDR(item.price)}
+                        </span>
+                        
+                        <div className="flex items-center gap-2">
+                          {/* Quick Add Button */}
+                          <motion.button
+                            whileHover={{ scale: 1.08 }}
+                            whileTap={{ scale: 0.92 }}
+                            onClick={() => handleQuickAdd(item)}
+                            disabled={isOut}
+                            className={`font-bold px-4 py-2 rounded-full text-xs md:text-sm transition-all duration-200 flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                              isOut
+                                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                                : "bg-terracotta/10 text-terracotta hover:bg-terracotta hover:text-soft-cream hover:shadow-md"
+                            }`}
+                          >
+                            <Plus className="w-4 h-4 shrink-0" />
+                            <span>{isOut ? "Habis" : "Tambah"}</span>
+                          </motion.button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Catalog Info Warning */}
@@ -2076,7 +2238,6 @@ export default function App() {
           <span className="tracking-wide uppercase text-xs md:text-sm font-extrabold">Order Now</span>
         </motion.button>
       )}
-
     </div>
   );
 }

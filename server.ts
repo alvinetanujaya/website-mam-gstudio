@@ -3,6 +3,7 @@ import path from "path";
 import dotenv from "dotenv";
 import midtransClient from "midtrans-client";
 import { createServer as createViteServer } from "vite";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
@@ -11,6 +12,112 @@ const PORT = 3000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Helper function to initialize Supabase Server client
+function getSupabaseServerClient() {
+  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+  const key = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  if (url && key) {
+    return createClient(url, key);
+  }
+  return null;
+}
+
+// Helper to record order & decrement product stock in Supabase
+async function recordOrderToSupabase(params: {
+  orderId: string;
+  customerName: string;
+  customerPhone: string;
+  totalAmount: number;
+  status?: string;
+  items: { productId?: number; quantity: number; price: number }[];
+}) {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) {
+    console.log("[Supabase Server] Client not configured. Skipping server database insertion.");
+    return;
+  }
+
+  try {
+    const orderStatus = params.status || "pending";
+    console.log(`[Supabase Server] Saving order ${params.orderId} to 'orders' table...`);
+
+    // 1. Upsert Order
+    const { error: orderErr } = await supabase.from("orders").upsert(
+      {
+        id: params.orderId,
+        customer_name: params.customerName || "Pelanggan",
+        customer_phone: params.customerPhone || "-",
+        total_amount: params.totalAmount,
+        status: orderStatus,
+      },
+      { onConflict: "id" }
+    );
+
+    if (orderErr) {
+      console.error("[Supabase Server Error] Failed to insert order:", orderErr.message);
+      return;
+    }
+
+    // 2. Insert order_items
+    if (params.items && params.items.length > 0) {
+      const orderItems = params.items.map((it) => ({
+        order_id: params.orderId,
+        product_id: typeof it.productId === "number" ? it.productId : null,
+        quantity: it.quantity,
+        price: it.price,
+      }));
+
+      const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
+      if (itemsErr) {
+        console.error("[Supabase Server Error] Failed to insert order_items:", itemsErr.message);
+      }
+    }
+
+    // 3. Decrement Product stock
+    for (const item of params.items) {
+      if (typeof item.productId === "number") {
+        const { data: prodData } = await supabase
+          .from("products")
+          .select("stock")
+          .eq("id", item.productId)
+          .single();
+
+        if (prodData && typeof prodData.stock === "number") {
+          const newStock = Math.max(0, prodData.stock - item.quantity);
+          await supabase
+            .from("products")
+            .update({ stock: newStock })
+            .eq("id", item.productId);
+          console.log(`[Supabase Server] Stock updated for product #${item.productId}: ${prodData.stock} -> ${newStock}`);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("[Supabase Server Exception]:", err?.message || err);
+  }
+}
+
+// Helper to update order status in Supabase
+async function updateSupabaseOrderStatus(orderId: string, status: string) {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return;
+
+  try {
+    const { error } = await supabase
+      .from("orders")
+      .update({ status: status })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error(`[Supabase Server] Error updating order ${orderId} status to ${status}:`, error.message);
+    } else {
+      console.log(`[Supabase Server] Order ${orderId} status updated to: ${status}`);
+    }
+  } catch (err: any) {
+    console.error("[Supabase Server Exception]:", err?.message || err);
+  }
+}
 
 // Helper function to initialize Midtrans Snap client
 function getMidtransSnap() {
@@ -125,6 +232,20 @@ const handleTokenizer = async (req: express.Request, res: express.Response) => {
 
     console.log(`[Midtrans API] Requesting Snap Token for Order ID: ${cleanOrderId}, Phone: ${cleanPhone}, Amount: Rp${amount}`);
 
+    // Record order in Supabase background
+    recordOrderToSupabase({
+      orderId: cleanOrderId,
+      customerName: cleanFirstName,
+      customerPhone: cleanPhone,
+      totalAmount: amount,
+      status: "pending",
+      items: (Array.isArray(item_details) ? item_details : []).map((it: any) => ({
+        productId: Number(it.productId || it.product_id || it.id) || undefined,
+        quantity: Number(it.quantity) || 1,
+        price: Number(it.price) || 0,
+      })),
+    });
+
     // Try creating via Midtrans SDK first
     try {
       const snap = getMidtransSnap();
@@ -220,13 +341,17 @@ const handleNotification = async (req: express.Request, res: express.Response) =
       if (transactionStatus === "capture") {
         if (fraudStatus === "accept") {
           console.log(`✅ Order ${orderId} successfully captured & accepted.`);
+          await updateSupabaseOrderStatus(orderId, "settlement");
         }
       } else if (transactionStatus === "settlement") {
         console.log(`✅ Order ${orderId} payment settled successfully!`);
+        await updateSupabaseOrderStatus(orderId, "settlement");
       } else if (transactionStatus === "cancel" || transactionStatus === "deny" || transactionStatus === "expire") {
         console.log(`❌ Order ${orderId} status changed to ${transactionStatus}.`);
+        await updateSupabaseOrderStatus(orderId, transactionStatus);
       } else if (transactionStatus === "pending") {
         console.log(`⏳ Order ${orderId} is pending payment.`);
+        await updateSupabaseOrderStatus(orderId, "pending");
       }
     } else {
       console.log("⚠️ MIDTRANS_SERVER_KEY not provided. Skipping signature verification.");

@@ -3,45 +3,50 @@ import { MenuItem, CustomizationOption } from "./types";
 export const MENU_ITEMS: MenuItem[] = [
   {
     id: 1,
-    name: "Nasi Campur Spesial MAM",
-    desc: "Paduan nasi hangat dengan lauk pauk pilihan: ayam suwir bumbu rahasia, sate lilit, telur pindang, dan sambal matah segar.",
-    price: 45000,
+    name: "Nasi Kotak Ayam Bakar",
+    desc: "Nasi kotak lengkap dengan ayam bakar bumbu madu gurih, tahu, tempe, lalapan segar, dan sambal terasi khas.",
+    price: 25000,
+    stock: 50,
+    category: "Makanan Utama",
+    featured: true,
+    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuBzART-r3H93c22LM2FiC7dNZWPDd9F5HKy1-j33bgJcHvU3I3f2ai9pLjOhNgjtqVJmuDSqgmWErv9-kAuhcOZavBkkeaxnJjZhXEUW1d2PQBaRXKMBA02mdhid6mMNV9IdqFyrLrWXbdHtXbi3K6xyeZuSciq_zjKEYKduqEQMy9XoxqKqJXUaHTXf6N3MUYAGbe6Hh_V7MzoMXseaFqM2MKCZxvEoXq37yMngnHffjPTMkOU9vaSiQ"
+  },
+  {
+    id: 2,
+    name: "Nasi Kotak Rendang",
+    desc: "Nasi kotak dengan daging sapi rendang empuk bumbu rempah autentik Padang, daun singkong, dan sambal ijo.",
+    price: 30000,
+    stock: 30,
+    category: "Makanan Utama",
+    featured: true,
+    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuA6MM3T5_WGIjKLAWM-H95bYbOp3gvikdZxSAWfAzTKg8mg1FtttFc-uskXmyZn-5ejHB9yWm1ZSDMZCTwEz-v4XRdKE66k1oqzDHCAmiyHTrNWXBJCzyssgC9slb77mrNGY1KEvMlFnjNDWKAfN9XLwDB4vXMiDhqpRv7MWSmu2vzi6YkPxW2kNcQuB8xGRgC1RttOKBvlW5L0m7maCsH8wjEmqLqVKTWRe-ZeT2zlCvPCKMXetogXQQ"
+  },
+  {
+    id: 3,
+    name: "Paket Prasmanan A",
+    desc: "Paket catering prasmanan lengkap untuk acara keluarga/kantor: Nasi, 2 lauk utama (Ayam & Daging), sayuran, kerupuk, dan es buah.",
+    price: 75000,
+    stock: 100,
     category: "Makanan Utama",
     featured: true,
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuBX_ei8KD0u0Vq4LtqMqK3_cCJGJ4vk33maQP1_XQnyZxMz4pq2dywkDKSwJWaqAE5y2ZnMngglJpVS1idH0aa37u66mS4BV8vsrIPbg2OkZwhFLpkKBPOC9YiQ3Mj4Hm5qqtf3dMn-a-eTPEHJWd3dj4GsNa-dpqzsmxQgXoM3f8u4tBDRrUi0DLBKofYjt3F_ROdHouwXUbR8X2abpUWS4TrR5J8tl6IRKk2UsSV7Jih4rSlRpgSdHQ"
   },
   {
-    id: 2,
-    name: "Ayam Bakar Madu",
-    desc: "Ayam bakar bumbu madu harum dengan nasi aromatik gurih dan sambal khas.",
+    id: 4,
+    name: "Nasi Campur Spesial MAM",
+    desc: "Paduan nasi hangat dengan lauk pauk pilihan: ayam suwir bumbu rahasia, sate lilit, telur pindang, dan sambal matah segar.",
     price: 45000,
-    category: "Makanan Utama",
-    featured: false,
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuBzART-r3H93c22LM2FiC7dNZWPDd9F5HKy1-j33bgJcHvU3I3f2ai9pLjOhNgjtqVJmuDSqgmWErv9-kAuhcOZavBkkeaxnJjZhXEUW1d2PQBaRXKMBA02mdhid6mMNV9IdqFyrLrWXbdHtXbi3K6xyeZuSciq_zjKEYKduqEQMy9XoxqKqJXUaHTXf6N3MUYAGbe6Hh_V7MzoMXseaFqM2MKCZxvEoXq37yMngnHffjPTMkOU9vaSiQ"
-  },
-  {
-    id: 3,
-    name: "Quinoa Sayuran Panggang",
-    desc: "Sayuran panggang musiman di atas quinoa yang pulen dan kaya nutrisi.",
-    price: 42000,
+    stock: 50,
     category: "Makanan Utama",
     featured: false,
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCZXP1jIeTbOc41gmXWiOcilnaHvbbI0yiD7IT1Q2vsQeh_ICFeVSM1Rxf4D3f1uzcrwuJsA7bbAlSOpQuQBdKbEACzjVpiw5H9gnK_AyzjRy3ylLBDYg2KUO_xogx_SAfd_qGVja_Bfs_IZyk_oXRJI8I5vnw4VdDHXoGP3jXC8Z-vYzCRZowSGNgNyzAe2AXcfC5uvRd0ZvYLf9Y9lddsb4c8rQKQljlFbJ3E92lYt2tg2CfcJUIz7A"
-  },
-  {
-    id: 4,
-    name: "Daging Sapi Masak Lambat",
-    desc: "Daging sapi empuk gurih yang direbus berjam-jam dalam kuah bumbu kaya rempah Nusantara.",
-    price: 55000,
-    category: "Makanan Utama",
-    featured: false,
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuA6MM3T5_WGIjKLAWM-H95bYbOp3gvikdZxSAWfAzTKg8mg1FtttFc-uskXmyZn-5ejHB9yWm1ZSDMZCTwEz-v4XRdKE66k1oqzDHCAmiyHTrNWXBJCzyssgC9slb77mrNGY1KEvMlFnjNDWKAfN9XLwDB4vXMiDhqpRv7MWSmu2vzi6YkPxW2kNcQuB8xGRgC1RttOKBvlW5L0m7maCsH8wjEmqLqVKTWRe-ZeT2zlCvPCKMXetogXQQ"
   },
   {
     id: 5,
     name: "Risol Mayo Artisan",
     desc: "Kulit renyah dengan isian smoked beef, telur rebus, dan saus mayo creamy gurih resep rahasia koki.",
     price: 20000,
+    stock: 60,
     category: "Cemilan",
     featured: false,
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuD9_QJ25hBsfrxrJJ5Rnoo75llA_GcAhdTMyJjmEGYSD9r53sYt_dld6DpLQVsm0lbIfctWQIAik9P9zNzxlgDWnc6J4kpgMinlZSpfASgY0nI-2pUSNPMOmlkinsUF-jtOAQsICMF4sM1Nrh9HvsNcuOgxSBGi5nvbZX8HhpMJFdGvLf8Vf21J7_s4VgZl12Ta9ytahVU7_GO5LbDQiq-dZOqrY0oPO5r1RawtbYfoxx8bXwH7hefoVg"
@@ -51,6 +56,7 @@ export const MENU_ITEMS: MenuItem[] = [
     name: "Es Kopi Susu Pandan",
     desc: "Espresso house blend dipadu susu segar dingin dan sirup ekstrak pandan wangi alami buatan sendiri.",
     price: 25000,
+    stock: 40,
     category: "Minuman",
     featured: false,
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCpb5QdL5Q7VcWnRudoLTIlpzmDIht-YrLPgtDC9Nsd_HVwocSQKgcnwwj8n1XJEmtMy6bjJYkjZpQ80mgBH20pqQfCZW8e3G1CAgAGQKF6r7jKZF-1Kf63F5c8d4sw-0aMK-Mjkfh5ymWy6eDovf-_uPZd1BcKl5RZaqdQ8tht31AvJluJR6rF7NZOKixwVWbGxkxESMlwrWAkuRTMGF6wLMVX7dyGiAqSB11Y3RYsKPgKJB6nhYZAvg"

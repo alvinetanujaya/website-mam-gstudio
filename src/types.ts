@@ -6,6 +6,32 @@ export interface MenuItem {
   category: "Makanan Utama" | "Cemilan" | "Minuman";
   featured: boolean;
   image: string;
+  stock?: number;
+}
+
+export interface DbProduct {
+  id: number;
+  name: string;
+  price: number;
+  stock: number;
+  created_at?: string;
+}
+
+export interface DbOrder {
+  id: string; // ID transaksi dari Midtrans / unique order string
+  customer_name: string;
+  customer_phone: string;
+  total_amount: number;
+  status: 'pending' | 'settlement' | 'cancel' | 'expire' | string;
+  created_at?: string;
+}
+
+export interface DbOrderItem {
+  id?: number;
+  order_id: string;
+  product_id: number;
+  quantity: number;
+  price: number;
 }
 
 export interface CustomizationOption {
