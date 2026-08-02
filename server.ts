@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import dotenv from "dotenv";
 import midtransClient from "midtrans-client";
 import { createServer as createViteServer } from "vite";
@@ -344,14 +345,21 @@ const handleGetProducts = async (req: express.Request, res: express.Response) =>
 app.get("/api/products", handleGetProducts);
 app.get("/app/api/products", handleGetProducts);
 
-// Persistent Admin PIN Storage (File + Supabase)
-const PIN_FILE_PATH = path.join(process.cwd(), "admin_pin.txt");
+// Persistent Admin PIN Storage (Memory + Temp File + Supabase)
+const PIN_FILE_PATH = path.join(os.tmpdir(), "mam_admin_pin.txt");
+let cachedServerAdminPin: string | null = null;
 
 function getStoredPinFromFile(): string {
+  if (cachedServerAdminPin && cachedServerAdminPin.length >= 4) {
+    return cachedServerAdminPin;
+  }
   try {
     if (fs.existsSync(PIN_FILE_PATH)) {
       const pin = fs.readFileSync(PIN_FILE_PATH, "utf-8").trim();
-      if (pin && pin.length >= 4) return pin;
+      if (pin && pin.length >= 4) {
+        cachedServerAdminPin = pin;
+        return pin;
+      }
     }
   } catch (e) {
     console.warn("Failed to read PIN file:", e);
@@ -360,8 +368,10 @@ function getStoredPinFromFile(): string {
 }
 
 function savePinToFile(pin: string) {
+  const cleanPin = pin.trim();
+  cachedServerAdminPin = cleanPin;
   try {
-    fs.writeFileSync(PIN_FILE_PATH, pin.trim(), "utf-8");
+    fs.writeFileSync(PIN_FILE_PATH, cleanPin, "utf-8");
   } catch (e) {
     console.warn("Failed to write PIN file:", e);
   }

@@ -127,20 +127,40 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
     }
   }, [isOpen, isAdminAuth]);
 
+  const [isVerifyingPin, setIsVerifyingPin] = useState<boolean>(false);
+
   const handleVerifyPin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Fetch latest PIN from server first to be 100% up to date across devices
-    const latestPin = await fetchAdminPin();
-    const activePin = latestPin || storedPin;
-    setStoredPin(activePin);
+    if (!inputPin.trim()) return;
 
-    if (inputPin.trim() === activePin) {
-      setIsAdminAuth(true);
-      sessionStorage.setItem("mam_admin_auth", "true");
-      setPinError(null);
-      setInputPin("");
-    } else {
-      setPinError("PIN Admin salah!");
+    setIsVerifyingPin(true);
+    setPinError(null);
+
+    try {
+      // Fetch latest global PIN from server / Supabase
+      const latestPin = await fetchAdminPin();
+      const activePin = (latestPin && latestPin.length >= 4) ? latestPin : storedPin;
+      setStoredPin(activePin);
+
+      if (inputPin.trim() === activePin) {
+        setIsAdminAuth(true);
+        sessionStorage.setItem("mam_admin_auth", "true");
+        setPinError(null);
+        setInputPin("");
+      } else {
+        setPinError("PIN Admin salah!");
+      }
+    } catch (err) {
+      if (inputPin.trim() === storedPin) {
+        setIsAdminAuth(true);
+        sessionStorage.setItem("mam_admin_auth", "true");
+        setPinError(null);
+        setInputPin("");
+      } else {
+        setPinError("PIN Admin salah!");
+      }
+    } finally {
+      setIsVerifyingPin(false);
     }
   };
 
@@ -368,10 +388,20 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
 
               <button
                 type="submit"
-                className="w-full py-3 rounded-2xl bg-terracotta text-white font-bold text-sm hover:bg-terracotta-dark transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                disabled={isVerifyingPin}
+                className="w-full py-3 rounded-2xl bg-terracotta text-white font-bold text-sm hover:bg-terracotta-dark transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                <Unlock className="w-4 h-4" />
-                Masuk ke Dashboard
+                {isVerifyingPin ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Memverifikasi...
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-4 h-4" />
+                    Masuk ke Dashboard
+                  </>
+                )}
               </button>
 
               <div className="pt-2 text-[11px] text-espresso-dark/50 flex items-center justify-center gap-1.5">

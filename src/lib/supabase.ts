@@ -245,7 +245,21 @@ export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { items?
 
 // Fetch global Admin PIN from server / Supabase
 export async function fetchAdminPin(): Promise<string> {
-  // 1. Try Supabase direct
+  // 1. Try Server API /api/admin/pin (returns PIN from memory/file or Supabase)
+  try {
+    const res = await fetch('/api/admin/pin', { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.pin && json.pin.length >= 4) {
+        localStorage.setItem('mam_admin_pin', json.pin);
+        return json.pin;
+      }
+    }
+  } catch (e) {
+    console.warn('API fetch PIN error:', e);
+  }
+
+  // 2. Try Supabase direct fallback
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -255,22 +269,12 @@ export async function fetchAdminPin(): Promise<string> {
         .single();
 
       if (!error && data && data.value) {
+        localStorage.setItem('mam_admin_pin', data.value);
         return data.value;
       }
     } catch (e) {
-      // Fallback to API
+      // Fallback
     }
-  }
-
-  // 2. Try Server API /api/admin/pin
-  try {
-    const res = await fetch('/api/admin/pin');
-    if (res.ok) {
-      const json = await res.json();
-      if (json && json.pin) return json.pin;
-    }
-  } catch (e) {
-    // Fallback
   }
 
   // 3. Fallback to localStorage or default 1234
