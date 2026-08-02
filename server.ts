@@ -317,6 +317,32 @@ app.post("/app/api/payment", handleTokenizer);
 app.post("/app/api/checkout", handleTokenizer);
 app.post("/app/api/midtrans", handleTokenizer); // Support Next.js App Router route alias request
 
+// API Route: Get Products & Stock from Supabase
+const handleGetProducts = async (req: express.Request, res: express.Response) => {
+  try {
+    const supabase = getSupabaseServerClient();
+    if (!supabase) {
+      return res.status(500).json({ error: "Supabase client not configured on server" });
+    }
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .order("id", { ascending: true });
+
+    if (error) {
+      console.error("[Supabase Server] Error fetching products:", error.message);
+      return res.status(500).json({ error: error.message });
+    }
+    return res.json({ data });
+  } catch (err: any) {
+    console.error("[Supabase Server] Exception fetching products:", err?.message || err);
+    return res.status(500).json({ error: err?.message || String(err) });
+  }
+};
+
+app.get("/api/products", handleGetProducts);
+app.get("/app/api/products", handleGetProducts);
+
 // 2. API Route: Notification Handler (Webhook)
 const handleNotification = async (req: express.Request, res: express.Response) => {
   try {

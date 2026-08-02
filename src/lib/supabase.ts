@@ -36,25 +36,41 @@ function formatSupabaseErrorMessage(error: any): string {
   return msg;
 }
 
-// Fetch products from Supabase 'products' table
+// Fetch products from Supabase 'products' table (with fallback to server API)
 export async function fetchProductsFromSupabase(): Promise<{ data: DbProduct[] | null; error: any }> {
-  if (!supabase) {
-    return { data: null, error: new Error('Supabase Client belum dikonfigurasi') };
-  }
-  try {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .order('id', { ascending: true });
+  // 1. Direct Supabase Client Query
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('id', { ascending: true });
 
-    if (error) {
-      console.warn('⚠️ Gagal mengambil data dari Supabase products table:', error);
-      return { data: null, error };
+      if (!error && data && data.length > 0) {
+        return { data, error: null };
+      }
+      if (error) {
+        console.warn('⚠️ Direct Supabase fetch warning, trying /api/products fallback:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('⚠️ Direct Supabase exception, trying /api/products fallback:', err);
     }
-    return { data, error: null };
-  } catch (err: any) {
-    return { data: null, error: err };
   }
+
+  // 2. Server API Fallback (/api/products)
+  try {
+    const res = await fetch('/api/products');
+    if (res.ok) {
+      const json = await res.json();
+      if (json && Array.isArray(json.data) && json.data.length > 0) {
+        return { data: json.data, error: null };
+      }
+    }
+  } catch (apiErr) {
+    console.warn('⚠️ /api/products fallback error:', apiErr);
+  }
+
+  return { data: null, error: new Error('Gagal mengambil data produk dari Supabase') };
 }
 
 // Subscribe to real-time changes on products table

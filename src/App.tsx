@@ -58,13 +58,18 @@ export default function App() {
     if (res && res.data && res.data.length > 0) {
       setMenuItems((prevItems) =>
         prevItems.map((item) => {
-          const matched = res.data.find((p) => p.id === item.id || p.name.toLowerCase() === item.name.toLowerCase());
+          const matched = res.data.find((p) => {
+            const sameId = String(p.id) === String(item.id);
+            const sameName = (p.name || '').trim().toLowerCase() === item.name.trim().toLowerCase();
+            return sameId || sameName;
+          });
           if (matched) {
+            const parsedStock = typeof matched.stock === 'number' ? matched.stock : Number(matched.stock);
             return {
               ...item,
               id: Number(matched.id) || item.id,
               price: Number(matched.price) || item.price,
-              stock: matched.stock ?? 50,
+              stock: isNaN(parsedStock) ? item.stock : parsedStock,
             };
           }
           return item;
