@@ -335,7 +335,8 @@ const handleGetProducts = async (req: express.Request, res: express.Response) =>
       console.error("[Supabase Server] Error fetching products:", error.message);
       return res.status(500).json({ error: error.message });
     }
-    return res.json({ data });
+    const filtered = (data || []).filter((p: any) => p.id !== 999999 && p.name !== "__ADMIN_PIN__");
+    return res.json({ data: filtered });
   } catch (err: any) {
     console.error("[Supabase Server] Exception fetching products:", err?.message || err);
     return res.status(500).json({ error: err?.message || String(err) });
@@ -345,8 +346,8 @@ const handleGetProducts = async (req: express.Request, res: express.Response) =>
 app.get("/api/products", handleGetProducts);
 app.get("/app/api/products", handleGetProducts);
 
-// Persistent Admin PIN Storage (Memory + Temp File + Supabase)
-const PIN_FILE_PATH = path.join(os.tmpdir(), "mam_admin_pin.txt");
+// Persistent Admin PIN Storage (Memory + Project File + Dual Supabase Strategy)
+const PIN_FILE_PATH = path.join(process.cwd(), "admin_pin.json");
 let cachedServerAdminPin: string | null = null;
 
 function getStoredPinFromFile(): string {
@@ -355,10 +356,18 @@ function getStoredPinFromFile(): string {
   }
   try {
     if (fs.existsSync(PIN_FILE_PATH)) {
-      const pin = fs.readFileSync(PIN_FILE_PATH, "utf-8").trim();
-      if (pin && pin.length >= 4) {
-        cachedServerAdminPin = pin;
-        return pin;
+      const text = fs.readFileSync(PIN_FILE_PATH, "utf-8").trim();
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && parsed.pin && parsed.pin.length >= 4) {
+          cachedServerAdminPin = parsed.pin;
+          return parsed.pin;
+        }
+      } catch (e) {
+        if (text && text.length >= 4) {
+          cachedServerAdminPin = text;
+          return text;
+        }
       }
     }
   } catch (e) {
@@ -371,29 +380,84 @@ function savePinToFile(pin: string) {
   const cleanPin = pin.trim();
   cachedServerAdminPin = cleanPin;
   try {
-    fs.writeFileSync(PIN_FILE_PATH, cleanPin, "utf-8");
+    fs.writeFileSync(PIN_FILE_PATH, JSON.stringify({ pin: cleanPin, updated_at: new Date().toISOString() }), "utf-8");
   } catch (e) {
     console.warn("Failed to write PIN file:", e);
   }
 }
 
-// API Route: Get Admin PIN
-const handleGetAdminPin = async (req: express.Request, res: express.Response) => {
-  try {
-    let currentPin = getStoredPinFromFile();
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
+// Fetch Admin PIN across all possible persistent storages in Supabase
+async function getAdminPinFromSupabase(): Promise<string> {
+  const supabase = getSupabaseServerClient();
+  if (supabase) {
+    // 1. Try admin_settings table
+    try {
       const { data, error } = await supabase
         .from("admin_settings")
         .select("value")
         .eq("key", "admin_pin")
         .single();
-
       if (!error && data && data.value) {
-        currentPin = data.value;
-        savePinToFile(currentPin);
+        savePinToFile(data.value);
+        return data.value;
       }
-    }
+    } catch (e) {}
+
+    // 2. Try products table fallback (id: 999999, name: '__ADMIN_PIN__')
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select("description")
+        .eq("id", 999999)
+        .single();
+      if (!error && data && data.description) {
+        savePinToFile(data.description);
+        return data.description;
+      }
+    } catch (e) {}
+  }
+  return getStoredPinFromFile();
+}
+
+async function saveAdminPinToSupabase(newPin: string): Promise<boolean> {
+  const cleanPin = newPin.trim();
+  savePinToFile(cleanPin);
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return false;
+
+  let success = false;
+
+  // 1. Upsert to admin_settings
+  try {
+    const { error } = await supabase
+      .from("admin_settings")
+      .upsert({ key: "admin_pin", value: cleanPin, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    if (!error) success = true;
+  } catch (e) {}
+
+  // 2. Upsert to products as guaranteed fallback (id: 999999)
+  try {
+    const { error } = await supabase
+      .from("products")
+      .upsert({
+        id: 999999,
+        name: "__ADMIN_PIN__",
+        price: 0,
+        stock: 0,
+        description: cleanPin,
+        created_at: new Date().toISOString()
+      }, { onConflict: "id" });
+    if (!error) success = true;
+  } catch (e) {}
+
+  return success;
+}
+
+// API Route: Get Admin PIN
+const handleGetAdminPin = async (req: express.Request, res: express.Response) => {
+  try {
+    const currentPin = await getAdminPinFromSupabase();
     return res.json({ pin: currentPin });
   } catch (err) {
     return res.json({ pin: getStoredPinFromFile() });
@@ -409,17 +473,7 @@ const handleUpdateAdminPin = async (req: express.Request, res: express.Response)
     }
 
     const newPin = pin.trim();
-    savePinToFile(newPin);
-
-    const supabase = getSupabaseServerClient();
-    if (supabase) {
-      const { error } = await supabase
-        .from("admin_settings")
-        .upsert({ key: "admin_pin", value: newPin, updated_at: new Date().toISOString() }, { onConflict: "key" });
-      if (error) {
-        console.warn("Supabase admin_settings upsert note:", error.message);
-      }
-    }
+    await saveAdminPinToSupabase(newPin);
 
     return res.json({ success: true, pin: newPin });
   } catch (err: any) {
@@ -427,10 +481,31 @@ const handleUpdateAdminPin = async (req: express.Request, res: express.Response)
   }
 };
 
+// API Route: Verify Admin PIN
+const handleVerifyAdminPin = async (req: express.Request, res: express.Response) => {
+  try {
+    const { pin } = req.body || {};
+    if (!pin || typeof pin !== "string") {
+      return res.status(400).json({ success: false, error: "PIN wajib diisi" });
+    }
+
+    const currentPin = await getAdminPinFromSupabase();
+    if (pin.trim() === currentPin) {
+      return res.json({ success: true, verified: true });
+    } else {
+      return res.status(401).json({ success: false, verified: false, error: "PIN Admin salah!" });
+    }
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: "Gagal memverifikasi PIN" });
+  }
+};
+
 app.get("/api/admin/pin", handleGetAdminPin);
 app.post("/api/admin/pin", handleUpdateAdminPin);
+app.post("/api/admin/verify-pin", handleVerifyAdminPin);
 app.get("/app/api/admin/pin", handleGetAdminPin);
 app.post("/app/api/admin/pin", handleUpdateAdminPin);
+app.post("/app/api/admin/verify-pin", handleVerifyAdminPin);
 
 // 2. API Route: Notification Handler (Webhook)
 const handleNotification = async (req: express.Request, res: express.Response) => {

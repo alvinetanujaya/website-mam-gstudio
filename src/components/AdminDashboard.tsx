@@ -137,7 +137,32 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
     setPinError(null);
 
     try {
-      // Fetch latest global PIN from server / Supabase
+      // 1. Server-side verification via API
+      const res = await fetch("/api/admin/verify-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: inputPin.trim() }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.verified || json.success) {
+          setIsAdminAuth(true);
+          sessionStorage.setItem("mam_admin_auth", "true");
+          setPinError(null);
+          setInputPin("");
+          setIsVerifyingPin(false);
+          return;
+        }
+      }
+
+      if (res.status === 401) {
+        setPinError("PIN Admin salah!");
+        setIsVerifyingPin(false);
+        return;
+      }
+
+      // 2. Fallback client-side verification using latest Supabase PIN
       const latestPin = await fetchAdminPin();
       const activePin = (latestPin && latestPin.length >= 4) ? latestPin : storedPin;
       setStoredPin(activePin);
@@ -151,7 +176,8 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
         setPinError("PIN Admin salah!");
       }
     } catch (err) {
-      if (inputPin.trim() === storedPin) {
+      const latestPin = await fetchAdminPin();
+      if (inputPin.trim() === (latestPin || storedPin)) {
         setIsAdminAuth(true);
         sessionStorage.setItem("mam_admin_auth", "true");
         setPinError(null);

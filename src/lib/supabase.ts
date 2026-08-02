@@ -47,7 +47,8 @@ export async function fetchProductsFromSupabase(): Promise<{ data: DbProduct[] |
         .order('id', { ascending: true });
 
       if (!error && data && data.length > 0) {
-        return { data, error: null };
+        const filtered = data.filter((p: DbProduct) => p.id !== 999999 && p.name !== '__ADMIN_PIN__');
+        return { data: filtered, error: null };
       }
       if (error) {
         console.warn('⚠️ Direct Supabase fetch warning, trying /api/products fallback:', error.message);
@@ -63,7 +64,8 @@ export async function fetchProductsFromSupabase(): Promise<{ data: DbProduct[] |
     if (res.ok) {
       const json = await res.json();
       if (json && Array.isArray(json.data) && json.data.length > 0) {
-        return { data: json.data, error: null };
+        const filtered = json.data.filter((p: DbProduct) => p.id !== 999999 && p.name !== '__ADMIN_PIN__');
+        return { data: filtered, error: null };
       }
     }
   } catch (apiErr) {
@@ -245,7 +247,7 @@ export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { items?
 
 // Fetch global Admin PIN from server / Supabase
 export async function fetchAdminPin(): Promise<string> {
-  // 1. Try Server API /api/admin/pin (returns PIN from memory/file or Supabase)
+  // 1. Try Server API /api/admin/pin (returns PIN from file/memory or Supabase)
   try {
     const res = await fetch('/api/admin/pin', { cache: 'no-store' });
     if (res.ok) {
@@ -259,7 +261,7 @@ export async function fetchAdminPin(): Promise<string> {
     console.warn('API fetch PIN error:', e);
   }
 
-  // 2. Try Supabase direct fallback
+  // 2. Direct Supabase Fallback (admin_settings)
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -272,12 +274,24 @@ export async function fetchAdminPin(): Promise<string> {
         localStorage.setItem('mam_admin_pin', data.value);
         return data.value;
       }
-    } catch (e) {
-      // Fallback
-    }
+    } catch (e) {}
+
+    // 3. Direct Supabase Fallback (products id 999999)
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('description')
+        .eq('id', 999999)
+        .single();
+
+      if (!error && data && data.description) {
+        localStorage.setItem('mam_admin_pin', data.description);
+        return data.description;
+      }
+    } catch (e) {}
   }
 
-  // 3. Fallback to localStorage or default 1234
+  // 4. Fallback to localStorage or default 1234
   return localStorage.getItem('mam_admin_pin') || '1234';
 }
 
@@ -297,15 +311,26 @@ export async function saveAdminPin(newPin: string): Promise<{ success: boolean; 
     console.warn('API update PIN error:', e);
   }
 
-  // 2. Direct Supabase update if configured
+  // 2. Direct Supabase update if configured (both admin_settings & products fallback)
   if (supabase) {
     try {
       await supabase
         .from('admin_settings')
         .upsert({ key: 'admin_pin', value: pinToSave, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-    } catch (e) {
-      console.warn('Supabase update PIN error:', e);
-    }
+    } catch (e) {}
+
+    try {
+      await supabase
+        .from('products')
+        .upsert({
+          id: 999999,
+          name: '__ADMIN_PIN__',
+          price: 0,
+          stock: 0,
+          description: pinToSave,
+          created_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch (e) {}
   }
 
   return { success: true };
