@@ -31,6 +31,7 @@ import {
 import { MENU_ITEMS, CUSTOMIZATION_OPTIONS, FAQS } from "./data";
 import { MenuItem, CustomizationOption, CartItem, CustomerDetails } from "./types";
 import { MamLogo } from "./components/MamLogo";
+import heroSapiLadaHitam from "./assets/images/regenerated_image_1785694387233.png";
 
 export default function App() {
   // Navigation & UI States
@@ -798,11 +799,11 @@ export default function App() {
             <section className="px-6 py-12 md:py-20 max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-10">
               <div className="w-full lg:w-1/2 flex flex-col items-start gap-6">
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-espresso-dark leading-tight tracking-tight">
-                  Keharmonisan Rasa Nusantara di Setiap Gigitan
+                  Life is Busy, Meals Shouldn't Be.
                 </h1>
                 
                 <p className="text-base md:text-lg text-espresso-dark/75 leading-relaxed max-w-lg">
-                  Dibuat dengan bahan-bahan pilihan berkualitas tinggi, resep warisan kami menghadirkan pengalaman kuliner autentik langsung ke meja Anda tanpa repot.
+                  Kami percaya setiap orang berhak makan enak dan berkualitas setiap hari.
                 </p>
                 
                 <div className="flex flex-col sm:flex-row gap-4 mt-2 w-full sm:w-auto">
@@ -821,17 +822,18 @@ export default function App() {
 
               {/* Delicious Hero Product Photo */}
               <div className="w-full lg:w-1/2">
-                <div className="relative aspect-square md:aspect-[4/3] rounded-3xl overflow-hidden shadow-2xl group border-4 border-white">
+                <div className="relative aspect-[3/4] max-w-md mx-auto lg:max-w-none rounded-3xl overflow-hidden shadow-2xl group border-4 border-white">
                   <img
                     className="w-full h-full object-cover transform group-hover:scale-[1.03] transition-transform duration-700"
-                    alt="Authentic Indonesian Beef Rendang"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuBtR4Lrt5q8dLkhP-lTD53iRfpTKUgn7WQQZ7z9LsIj7gP9qBHDCf0iZUeGMXgaS-AiA5wtlms1TuY17aA_oh4xkhlwthqSZDROPjRys3gmDOxGUeY0Ytj4OxFZPx1NP7V2SDzvRvfMrVVVbLq3z7wV4olcTeXuR9DngRXLLkAOGGrJuQ7VTTyXqf_M2A4izw1Xd_lAdpd26cn46UozgXbgqqKHS9XqrwCSyGXynlP0D6WVrqObVrCS2Q"
+                    alt="Daging Sapi Lada Hitam MAM"
+                    src={heroSapiLadaHitam}
+                    referrerPolicy="no-referrer"
                   />
                   {/* Subtle Elegant Badge Overlay */}
                   <div className="absolute bottom-6 left-6 right-6 bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-lg border border-outline-variant/10 flex items-center justify-between">
                     <div>
                       <p className="text-xs text-terracotta font-bold uppercase tracking-wider">Highlight Menu</p>
-                      <h4 className="text-sm md:text-base font-bold text-espresso-dark">Daging Sapi Masak Lambat</h4>
+                      <h4 className="text-sm md:text-base font-bold text-espresso-dark">Daging Sapi Lada Hitam</h4>
                     </div>
                     <span className="text-sm font-bold text-terracotta bg-terracotta/10 px-3 py-1 rounded-full">Rp 55.000</span>
                   </div>
