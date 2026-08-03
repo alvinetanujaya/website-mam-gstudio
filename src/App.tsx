@@ -195,7 +195,9 @@ export default function App() {
 
   const scrollMenu = (ref: React.RefObject<HTMLDivElement | null>, direction: "left" | "right") => {
     if (ref.current) {
-      const scrollAmount = direction === "left" ? -340 : 340;
+      const containerWidth = ref.current.clientWidth;
+      const step = Math.min(containerWidth * 0.75, 360);
+      const scrollAmount = direction === "left" ? -step : step;
       ref.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
     }
   };
@@ -910,7 +912,7 @@ export default function App() {
               {/* Drawer Customer Support Area */}
               <div className="pt-4 border-t border-outline-variant/20 mt-auto">
                 <a
-                  href="https://wa.me/6282233009957"
+                  href="https://wa.me/6282233009957?text=Halo%20MAM%20catering."
                   target="_blank"
                   rel="noreferrer"
                   className="w-full flex items-center justify-center gap-3 bg-white border border-terracotta text-terracotta font-semibold py-3 px-4 rounded-xl shadow-xs hover:bg-terracotta/5 transition-all text-sm"
@@ -1020,40 +1022,24 @@ export default function App() {
               {/* Horizontal Slider Carousel for Home Page */}
               <div 
                 ref={homeMenuScrollRef}
-                className="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-8 pt-3 px-1 hide-scrollbar scroll-smooth"
+                className="flex gap-6 overflow-x-auto snap-x snap-proximity pb-8 pt-3 px-1 hide-scrollbar smooth-scroll-x touch-pan-x transform-gpu"
               >
                 {menuItems.map((item, index) => {
                   const itemStock = item.stock ?? 50;
                   const isOut = itemStock <= 0;
 
                   return (
-                    <motion.div
+                    <div
                       key={item.id}
-                      initial={{ opacity: 0, y: 24, scale: 0.95 }}
-                      whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                      viewport={{ once: true, margin: "-30px" }}
-                      transition={{
-                        duration: 0.5,
-                        delay: index * 0.07,
-                        ease: [0.25, 0.1, 0.25, 1.0],
-                      }}
-                      whileHover={{ 
-                        y: -8, 
-                        scale: 1.015,
-                        transition: { duration: 0.25, ease: "easeOut" }
-                      }}
-                      className="flex-none w-[280px] sm:w-[320px] md:w-[350px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-[0_16px_36px_rgba(44,27,18,0.12)] border border-outline-variant/25 transition-all duration-300 flex flex-col group relative"
+                      className="flex-none w-[280px] sm:w-[320px] md:w-[350px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-[0_16px_36px_rgba(44,27,18,0.12)] hover:-translate-y-1.5 border border-outline-variant/25 transition-all duration-300 flex flex-col group relative transform-gpu will-change-transform"
                     >
                       {item.featured && (
-                        <motion.div 
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.2 + index * 0.05 }}
+                        <div 
                           className="absolute top-4 left-4 bg-terracotta text-soft-cream font-bold text-xs uppercase tracking-wider px-3 py-1 rounded-lg z-10 flex items-center gap-1 shadow-md border border-white/20"
                         >
                           <Star className="w-3.5 h-3.5 fill-current animate-pulse" />
                           <span>Best Seller</span>
-                        </motion.div>
+                        </div>
                       )}
 
                       <div 
@@ -1130,7 +1116,7 @@ export default function App() {
                           </motion.button>
                         </div>
                       </div>
-                    </motion.div>
+                    </div>
                   );
                 })}
               </div>
@@ -1448,7 +1434,7 @@ export default function App() {
             {/* Filter Pill-Tabs & Carousel Navigation Controls */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-4 border-b border-outline-variant/10">
               {/* Filter Pill-Tabs */}
-              <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 max-w-full">
+              <div className="flex gap-2 overflow-x-auto hide-scrollbar smooth-scroll-x touch-pan-x py-1 max-w-full">
                 {["Semua", "Makanan Utama", "Frozen Food"].map((cat) => (
                   <motion.button
                     key={cat}
@@ -1491,7 +1477,7 @@ export default function App() {
             {/* Horizontal Slide Carousel Menu Catalog */}
             <div 
               ref={menuScrollRef}
-              className="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-8 pt-2 hide-scrollbar scroll-smooth"
+              className="flex gap-6 overflow-x-auto snap-x snap-proximity pb-8 pt-2 hide-scrollbar smooth-scroll-x touch-pan-x transform-gpu"
             >
               {filteredMenu.map((item) => {
                 const itemStock = item.stock ?? 50;
@@ -1500,7 +1486,7 @@ export default function App() {
                 return (
                   <div
                     key={item.id}
-                    className="flex-none w-[280px] sm:w-[320px] md:w-[360px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-xl hover:-translate-y-1 border border-outline-variant/25 transition-all duration-300 flex flex-col group relative"
+                    className="flex-none w-[280px] sm:w-[320px] md:w-[360px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-xl hover:-translate-y-1.5 border border-outline-variant/25 transition-all duration-300 flex flex-col group relative transform-gpu will-change-transform"
                   >
                     {/* Best Seller Overlay badge */}
                     {item.featured && (
@@ -2041,7 +2027,7 @@ export default function App() {
               </button>
             </div>
             <a
-              href="https://wa.me/6282233009957"
+              href="https://wa.me/6282233009957?text=Halo%20MAM%20catering."
               target="_blank"
               rel="noreferrer"
               className="mt-1 inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all border border-emerald-500/30 cursor-pointer no-underline"

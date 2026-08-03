@@ -15,13 +15,24 @@
   font-family: "Playfair Display", "Georgia", serif;
 }
 
-/* Custom scrollbar hiding and styles */
+/* Custom scrollbar hiding and ultra-smooth horizontal scrolling styles */
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
 .hide-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+.smooth-scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  scroll-snap-type: x proximity;
+  will-change: scroll-position;
 }
 
 body {
