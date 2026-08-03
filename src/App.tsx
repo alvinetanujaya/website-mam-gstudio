@@ -101,12 +101,13 @@ export default function App() {
   // Dynamic Menu Items State with Supabase stock integration
   const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
 
-  // Function to sync products/stock from Supabase
+  // Function to sync products/name/price/stock from Supabase
   const loadSupabaseProducts = async () => {
     const res = await fetchProductsFromSupabase();
     if (res && res.data && res.data.length > 0) {
-      setMenuItems((prevItems) =>
-        prevItems.map((item) => {
+      setMenuItems((prevItems) => {
+        // Map existing items with Supabase data
+        const updated = prevItems.map((item) => {
           const matched = res.data.find((p) => {
             const sameId = String(p.id) === String(item.id);
             const sameName = (p.name || '').trim().toLowerCase() === item.name.trim().toLowerCase();
@@ -117,13 +118,38 @@ export default function App() {
             return {
               ...item,
               id: Number(matched.id) || item.id,
+              name: matched.name || item.name,
               price: Number(matched.price) || item.price,
+              image: matched.image || item.image,
               stock: isNaN(parsedStock) ? item.stock : parsedStock,
             };
           }
           return item;
-        })
-      );
+        });
+
+        // Add any new products created in Supabase that don't match existing hardcoded IDs
+        res.data.forEach((dbItem) => {
+          const exists = updated.some(
+            (u) => String(u.id) === String(dbItem.id) || (u.name && dbItem.name && u.name.trim().toLowerCase() === dbItem.name.trim().toLowerCase())
+          );
+          if (!exists && dbItem.name) {
+            const parsedStock = typeof dbItem.stock === 'number' ? dbItem.stock : Number(dbItem.stock);
+            updated.push({
+              id: Number(dbItem.id) || Date.now(),
+              name: dbItem.name,
+              category: "Spesial",
+              price: Number(dbItem.price) || 25000,
+              description: "Menu lezat pilihan dari MAM Culinary Heritage.",
+              image: dbItem.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600",
+              popular: true,
+              rating: 4.9,
+              stock: isNaN(parsedStock) ? 50 : parsedStock,
+            });
+          }
+        });
+
+        return updated;
+      });
     }
   };
 

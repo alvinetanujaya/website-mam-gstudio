@@ -104,7 +104,8 @@ export async function seedProductsToSupabase(itemsToSeed: MenuItem[] = MENU_ITEM
       id: item.id,
       name: item.name,
       price: item.price,
-      stock: item.stock ?? 50
+      stock: item.stock ?? 50,
+      image: item.image
     }));
 
     const { data, error } = await supabase
@@ -212,6 +213,35 @@ export async function updateSupabaseStock(productId: number, newStock: number): 
       .from('products')
       .update({ stock: Math.max(0, newStock) })
       .eq('id', productId);
+
+    if (error) {
+      return { success: false, message: formatSupabaseErrorMessage(error) };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: formatSupabaseErrorMessage(err) };
+  }
+}
+
+// Update product full details (name, price, stock, image) in Supabase
+export async function updateSupabaseProduct(item: { id: number; name?: string; price?: number; stock?: number; image?: string }): Promise<{ success: boolean; message?: string }> {
+  if (!supabase) {
+    return { success: false, message: 'Supabase client tidak dikonfigurasi.' };
+  }
+
+  try {
+    const updatePayload: Record<string, any> = {};
+    if (item.name !== undefined) updatePayload.name = item.name.trim();
+    if (item.price !== undefined) updatePayload.price = Number(item.price);
+    if (item.stock !== undefined) updatePayload.stock = Math.max(0, Number(item.stock));
+    if (item.image !== undefined) updatePayload.image = item.image.trim();
+
+    const { error } = await supabase
+      .from('products')
+      .upsert({
+        id: item.id,
+        ...updatePayload
+      }, { onConflict: 'id' });
 
     if (error) {
       return { success: false, message: formatSupabaseErrorMessage(error) };

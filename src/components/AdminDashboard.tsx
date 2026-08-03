@@ -34,7 +34,8 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
-  Receipt
+  Receipt,
+  Pencil
 } from "lucide-react";
 import { MenuItem, DbOrder } from "../types";
 import { 
@@ -42,6 +43,7 @@ import {
   fetchProductsFromSupabase, 
   seedProductsToSupabase, 
   updateSupabaseStock, 
+  updateSupabaseProduct,
   fetchSupabaseOrders,
   fetchAdminPin,
   saveAdminPin
@@ -76,6 +78,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"daily_grouped" | "all_list">("daily_grouped");
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
+
+  // Product Editing State
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [editNameInput, setEditNameInput] = useState("");
+  const [editPriceInput, setEditPriceInput] = useState("");
+  const [editStockInput, setEditStockInput] = useState("");
+  const [editImageInput, setEditImageInput] = useState("");
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
 
   // Quick lookup map for menu items by ID
   const productMap = useMemo(() => {
@@ -254,6 +264,41 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
     await updateSupabaseStock(item.id, newStock);
     setUpdatingStockId(null);
     onRefreshMenu();
+  };
+
+  const handleOpenEditProduct = (item: MenuItem) => {
+    setEditingItem(item);
+    setEditNameInput(item.name);
+    setEditPriceInput(String(item.price));
+    setEditStockInput(String(item.stock ?? 50));
+    setEditImageInput(item.image || "");
+  };
+
+  const handleSaveProductEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+    setIsSavingProduct(true);
+
+    const updatedPrice = Number(editPriceInput) || editingItem.price;
+    const updatedStock = Number(editStockInput);
+
+    const res = await updateSupabaseProduct({
+      id: editingItem.id,
+      name: editNameInput,
+      price: updatedPrice,
+      stock: isNaN(updatedStock) ? (editingItem.stock ?? 50) : updatedStock,
+      image: editImageInput
+    });
+
+    setIsSavingProduct(false);
+
+    if (res.success) {
+      setEditingItem(null);
+      onRefreshMenu();
+      alert("✅ Menu berhasil diperbarui di Supabase!");
+    } else {
+      alert(`❌ Gagal memperbarui menu: ${res.message || "Error Supabase"}`);
+    }
   };
 
   const copySql = () => {
@@ -1084,42 +1129,53 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                                 {isOut ? "Stok Habis" : `Stok: ${currentStock}`}
                               </span>
 
-                              <div className="flex items-center gap-1 bg-warm-cream/60 p-1 rounded-xl border border-outline-variant/20">
+                              <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() => handleStockChange(item, -5)}
-                                  disabled={updatingStockId === item.id}
-                                  className="p-1 rounded-lg hover:bg-white text-espresso-dark/70 hover:text-espresso-dark text-xs font-bold px-2 transition-colors disabled:opacity-50 cursor-pointer"
-                                  title="Kurangi 5"
+                                  onClick={() => handleOpenEditProduct(item)}
+                                  className="p-2 rounded-xl bg-warm-cream/80 hover:bg-terracotta hover:text-white text-espresso-dark transition-all border border-outline-variant/20 flex items-center gap-1 text-xs font-bold cursor-pointer"
+                                  title="Edit Nama, Harga & Stok"
                                 >
-                                  -5
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Edit Menu</span>
                                 </button>
-                                <button
-                                  onClick={() => handleStockChange(item, -1)}
-                                  disabled={updatingStockId === item.id}
-                                  className="p-1.5 rounded-lg hover:bg-white text-espresso-dark/70 hover:text-espresso-dark transition-colors disabled:opacity-50 cursor-pointer"
-                                  title="Kurangi 1"
-                                >
-                                  <Minus className="w-3.5 h-3.5" />
-                                </button>
-                                <span className="w-8 text-center text-xs font-bold text-espresso-dark">
-                                  {updatingStockId === item.id ? "..." : currentStock}
-                                </span>
-                                <button
-                                  onClick={() => handleStockChange(item, 1)}
-                                  disabled={updatingStockId === item.id}
-                                  className="p-1.5 rounded-lg hover:bg-white text-espresso-dark/70 hover:text-espresso-dark transition-colors disabled:opacity-50 cursor-pointer"
-                                  title="Tambah 1"
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleStockChange(item, 10)}
-                                  disabled={updatingStockId === item.id}
-                                  className="p-1 rounded-lg hover:bg-white text-espresso-dark/70 hover:text-espresso-dark text-xs font-bold px-2 transition-colors disabled:opacity-50 cursor-pointer"
-                                  title="Tambah 10"
-                                >
-                                  +10
-                                </button>
+
+                                <div className="flex items-center gap-1 bg-warm-cream/60 p-1 rounded-xl border border-outline-variant/20">
+                                  <button
+                                    onClick={() => handleStockChange(item, -5)}
+                                    disabled={updatingStockId === item.id}
+                                    className="p-1 rounded-lg hover:bg-white text-espresso-dark/70 hover:text-espresso-dark text-xs font-bold px-2 transition-colors disabled:opacity-50 cursor-pointer"
+                                    title="Kurangi 5"
+                                  >
+                                    -5
+                                  </button>
+                                  <button
+                                    onClick={() => handleStockChange(item, -1)}
+                                    disabled={updatingStockId === item.id}
+                                    className="p-1.5 rounded-lg hover:bg-white text-espresso-dark/70 hover:text-espresso-dark transition-colors disabled:opacity-50 cursor-pointer"
+                                    title="Kurangi 1"
+                                  >
+                                    <Minus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <span className="w-8 text-center text-xs font-bold text-espresso-dark">
+                                    {updatingStockId === item.id ? "..." : currentStock}
+                                  </span>
+                                  <button
+                                    onClick={() => handleStockChange(item, 1)}
+                                    disabled={updatingStockId === item.id}
+                                    className="p-1.5 rounded-lg hover:bg-white text-espresso-dark/70 hover:text-espresso-dark transition-colors disabled:opacity-50 cursor-pointer"
+                                    title="Tambah 1"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleStockChange(item, 10)}
+                                    disabled={updatingStockId === item.id}
+                                    className="p-1 rounded-lg hover:bg-white text-espresso-dark/70 hover:text-espresso-dark text-xs font-bold px-2 transition-colors disabled:opacity-50 cursor-pointer"
+                                    title="Tambah 10"
+                                  >
+                                    +10
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1573,6 +1629,103 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
         )}
 
       </div>
+
+      {/* EDIT PRODUCT MODAL */}
+      {editingItem && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-md w-full border border-outline-variant/20 space-y-4">
+            <div className="flex items-center justify-between border-b border-outline-variant/15 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-terracotta/10 text-terracotta rounded-xl">
+                  <Pencil className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-base font-black text-espresso-dark">Edit Detail Menu</h4>
+                  <p className="text-[11px] text-espresso-dark/60">Perbarui nama, harga, dan stok di Supabase</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingItem(null)}
+                className="p-1.5 rounded-full text-espresso-dark/50 hover:bg-warm-cream transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProductEdit} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-espresso-dark block mb-1">
+                  Nama Menu
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editNameInput}
+                  onChange={(e) => setEditNameInput(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-outline-variant/30 text-xs font-semibold focus:outline-none focus:border-terracotta"
+                  placeholder="Contoh: Nasi Kenduri Rendang"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-espresso-dark block mb-1">
+                    Harga (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    value={editPriceInput}
+                    onChange={(e) => setEditPriceInput(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-outline-variant/30 text-xs font-mono font-bold focus:outline-none focus:border-terracotta"
+                    placeholder="35000"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-espresso-dark block mb-1">
+                    Stok Tersedia
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    value={editStockInput}
+                    onChange={(e) => setEditStockInput(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-outline-variant/30 text-xs font-mono font-bold focus:outline-none focus:border-terracotta"
+                    placeholder="50"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="px-4 py-2 rounded-xl border border-outline-variant/20 text-xs font-bold text-espresso-dark/70 hover:bg-warm-cream transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingProduct}
+                  className="px-5 py-2 rounded-xl bg-terracotta text-white text-xs font-bold hover:bg-terracotta-dark transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingProduct ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    "Simpan ke Supabase"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
