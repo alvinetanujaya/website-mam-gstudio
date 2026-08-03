@@ -711,73 +711,6 @@ export default function App() {
     }
   };
 
-  // Send Order to WhatsApp with complete data
-  const handleSendToWhatsApp = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!customerDetails.fullName.trim()) {
-      alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
-      return;
-    }
-    if (!customerDetails.phone.trim()) {
-      alert("Silakan masukkan nomor handphone / WhatsApp Anda untuk koordinasi pengiriman.");
-      return;
-    }
-    if (!customerDetails.deliveryAddress.trim()) {
-      alert("Silakan masukkan alamat lengkap pengiriman Anda.");
-      return;
-    }
-    if (!customerDetails.deliveryDate) {
-      alert("Silakan pilih tanggal pengiriman pesanan Anda.");
-      return;
-    }
-
-    // Build the formatted order text
-    let text = `*PESANAN BARU - MAM CULINARY HERITAGE*\n`;
-    text += `==================================\n\n`;
-    text += `*Detail Pelanggan & Pengiriman:*\n`;
-    text += `👤 Nama: ${customerDetails.fullName}\n`;
-    text += `📱 No. HP/WA: ${customerDetails.phone}\n`;
-    text += `📅 Tanggal Pengiriman: *${customerDetails.deliveryDate}*\n`;
-    text += `📍 Alamat: ${customerDetails.deliveryAddress}\n`;
-    if (customerDetails.notes.trim()) {
-      text += `📝 Catatan: ${customerDetails.notes}\n`;
-    }
-    text += `\n----------------------------------\n`;
-    text += `*Daftar Pesanan:*\n`;
-
-    cart.forEach((item, index) => {
-      text += `${index + 1}. ${item.menuItem.name} (${item.quantity}x)\n`;
-      if (item.selectedOptions.length > 0) {
-        text += `   _Tambahan: ${item.selectedOptions.map((o) => `${o.name} (+${formatIDR(o.price)})`).join(", ")}_\n`;
-      }
-      text += `   Subtotal: ${formatIDR(item.unitPrice * item.quantity)}\n\n`;
-    });
-
-    text += `----------------------------------\n`;
-    text += `Subtotal Makanan: ${formatIDR(totalPrice)}\n`;
-    text += `Ongkos Kirim (Flat): ${formatIDR(SHIPPING_FEE)}\n`;
-    text += `*TOTAL PEMBAYARAN:* *${formatIDR(grandTotal)}*\n\n`;
-    text += `Mohon segera dikonfirmasi ketersediaannya. Terima kasih! 🙏✨`;
-
-    const phoneNumber = "6282233009957"; // Authorized WhatsApp contact number
-    const waUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(text)}`;
-    
-    // Clear cart upon checkout to reset gracefully
-    setCart([]);
-    setCustomerDetails({
-      fullName: "",
-      phone: "",
-      deliveryAddress: "",
-      deliveryDate: deliveryDateData.earliestDate,
-      notes: ""
-    });
-    setToastMessage("Mengalihkan ke WhatsApp...");
-    
-    // Open in new tab securely
-    window.open(waUrl, "_blank", "noopener,noreferrer");
-  };
-
   return (
     <div className="min-h-screen bg-soft-cream text-espresso-dark font-sans relative pb-16 md:pb-0 overflow-x-hidden">
       
@@ -1953,15 +1886,6 @@ export default function App() {
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                           <span>Mendukung QRIS, BCA/Mandiri/BRI VA, GoPay, ShopeePay & Kartu</span>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={handleSendToWhatsApp}
-                          className="w-full bg-surface-container-high/60 hover:bg-surface-container-high text-espresso-dark font-semibold py-3 rounded-xl border border-outline-variant/30 transition-all flex items-center justify-center gap-2 cursor-pointer text-sm"
-                        >
-                          <Send className="w-4 h-4 text-emerald-600" />
-                          <span>Atau Pesan Manual via WhatsApp</span>
-                        </button>
                       </div>
                     </form>
                   </div>
@@ -2101,26 +2025,29 @@ export default function App() {
             <span className="text-xs text-soft-cream/50 mt-1">Surabaya, Indonesia</span>
           </div>
 
-          <nav className="flex flex-wrap gap-x-8 gap-y-3">
-            <button
-              onClick={() => setCurrentTab("home")}
-              className="text-sm text-soft-cream/75 hover:text-terracotta transition-colors underline underline-offset-4 cursor-pointer"
-            >
-              Beranda
-            </button>
-            <button
-              onClick={() => setCurrentTab("menu")}
-              className="text-sm text-soft-cream/75 hover:text-terracotta transition-colors underline underline-offset-4 cursor-pointer"
-            >
-              Katalog Hidangan
-            </button>
+          <nav className="flex flex-col items-start gap-3">
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
+              <button
+                onClick={() => setCurrentTab("home")}
+                className="text-sm text-soft-cream/75 hover:text-terracotta transition-colors underline underline-offset-4 cursor-pointer"
+              >
+                Beranda
+              </button>
+              <button
+                onClick={() => setCurrentTab("menu")}
+                className="text-sm text-soft-cream/75 hover:text-terracotta transition-colors underline underline-offset-4 cursor-pointer"
+              >
+                Katalog Hidangan
+              </button>
+            </div>
             <a
               href="https://wa.me/6282233009957"
               target="_blank"
               rel="noreferrer"
-              className="text-sm text-soft-cream/75 hover:text-terracotta transition-colors underline underline-offset-4"
+              className="mt-1 inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all border border-emerald-500/30 cursor-pointer no-underline"
             >
-              Dukungan Pelanggan
+              <MessageCircle className="w-4 h-4 text-white shrink-0" />
+              <span>Chat Admin</span>
             </a>
           </nav>
         </div>
