@@ -103,6 +103,7 @@ export async function seedProductsToSupabase(itemsToSeed: MenuItem[] = MENU_ITEM
     const payload = itemsToSeed.map((item) => ({
       id: item.id,
       name: item.name,
+      category: item.category || "Makanan Utama",
       price: item.price,
       stock: item.stock ?? 50,
       image: item.image

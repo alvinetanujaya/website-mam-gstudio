@@ -30,7 +30,7 @@ import {
   Lock
 } from "lucide-react";
 import { MENU_ITEMS, CUSTOMIZATION_OPTIONS, FAQS } from "./data";
-import { MenuItem, CustomizationOption, CartItem, CustomerDetails } from "./types";
+import { MenuItem, CustomizationOption, CartItem, CustomerDetails, DbProduct } from "./types";
 import { MamLogo } from "./components/MamLogo";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { 
@@ -105,86 +105,63 @@ export default function App() {
   const loadSupabaseProducts = async () => {
     const res = await fetchProductsFromSupabase();
     if (res && res.data && res.data.length > 0) {
-      setMenuItems((prevItems) => {
-        // Map existing items with Supabase data by matching Name first, then ID
-        const updated = prevItems.map((item) => {
-          let matched = res.data.find(
-            (p) => (p.name || '').trim().toLowerCase() === item.name.trim().toLowerCase()
-          );
-          if (!matched) {
-            matched = res.data.find((p) => String(p.id) === String(item.id));
+      // Deduplicate Supabase items by ID and normalized Name to prevent duplicate entries
+      const uniqueDbItems: DbProduct[] = [];
+      const seenIds = new Set<string>();
+      const seenNames = new Set<string>();
+
+      for (const item of res.data) {
+        const idStr = String(item.id);
+        const nameClean = (item.name || '').trim().toLowerCase();
+        
+        if (!seenIds.has(idStr) && (!nameClean || !seenNames.has(nameClean))) {
+          if (idStr) seenIds.add(idStr);
+          if (nameClean) seenNames.add(nameClean);
+          uniqueDbItems.push(item);
+        }
+      }
+
+      // Map unique Supabase products directly to App menu items
+      const itemsFromDb: MenuItem[] = uniqueDbItems.map((dbItem) => {
+        // Find local item metadata (desc, image, etc.) if matching
+        const localMatch = MENU_ITEMS.find(
+          (m) =>
+            String(m.id) === String(dbItem.id) ||
+            m.name.trim().toLowerCase() === (dbItem.name || '').trim().toLowerCase()
+        );
+
+        const parsedStock = typeof dbItem.stock === 'number' ? dbItem.stock : Number(dbItem.stock);
+        const nameLower = (dbItem.name || '').toLowerCase();
+
+        let cat = dbItem.category;
+        if (!cat) {
+          if (
+            nameLower.includes("frozen") ||
+            nameLower.includes("ungkep") ||
+            nameLower.includes("paru") ||
+            nameLower.includes("bakso") ||
+            nameLower.includes("empal gentong") ||
+            nameLower.includes("ati ampela")
+          ) {
+            cat = "Frozen Food";
+          } else {
+            cat = localMatch?.category || "Makanan Utama";
           }
+        }
 
-          if (matched) {
-            const parsedStock = typeof matched.stock === 'number' ? matched.stock : Number(matched.stock);
-            
-            // Determine category
-            const itemName = matched.name || item.name || '';
-            const nameLower = itemName.toLowerCase();
-            let cat = matched.category || item.category;
-
-            if (
-              nameLower.includes("frozen") ||
-              nameLower.includes("ungkep") ||
-              nameLower.includes("paru") ||
-              nameLower.includes("bakso") ||
-              nameLower.includes("empal gentong") ||
-              nameLower.includes("ati ampela")
-            ) {
-              cat = "Frozen Food";
-            }
-
-            return {
-              ...item,
-              id: Number(matched.id) || item.id,
-              name: matched.name || item.name,
-              price: Number(matched.price) || item.price,
-              category: cat,
-              image: matched.image || item.image,
-              stock: isNaN(parsedStock) ? item.stock : parsedStock,
-            };
-          }
-          return item;
-        });
-
-        // Add any new products created in Supabase that don't match existing hardcoded IDs
-        res.data.forEach((dbItem) => {
-          const exists = updated.some(
-            (u) => String(u.id) === String(dbItem.id) || (u.name && dbItem.name && u.name.trim().toLowerCase() === dbItem.name.trim().toLowerCase())
-          );
-          if (!exists && dbItem.name) {
-            const parsedStock = typeof dbItem.stock === 'number' ? dbItem.stock : Number(dbItem.stock);
-            const nameLower = dbItem.name.toLowerCase();
-            let cat = dbItem.category || "Frozen Food";
-            if (
-              nameLower.includes("frozen") ||
-              nameLower.includes("ungkep") ||
-              nameLower.includes("paru") ||
-              nameLower.includes("bakso") ||
-              nameLower.includes("empal gentong") ||
-              nameLower.includes("ati ampela")
-            ) {
-              cat = "Frozen Food";
-            } else if (!dbItem.category) {
-              cat = "Makanan Utama";
-            }
-
-            updated.push({
-              id: Number(dbItem.id) || Date.now(),
-              name: dbItem.name,
-              category: cat,
-              price: Number(dbItem.price) || 25000,
-              description: "Menu lezat pilihan dari MAM Culinary Heritage.",
-              image: dbItem.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600",
-              popular: true,
-              rating: 4.9,
-              stock: isNaN(parsedStock) ? 50 : parsedStock,
-            });
-          }
-        });
-
-        return updated;
+        return {
+          id: Number(dbItem.id),
+          name: dbItem.name || localMatch?.name || 'Menu',
+          desc: localMatch?.desc || "Menu lezat pilihan dari MAM Culinary Heritage.",
+          price: Number(dbItem.price) || (localMatch?.price || 25000),
+          category: cat,
+          image: dbItem.image || localMatch?.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600",
+          featured: localMatch?.featured ?? true,
+          stock: isNaN(parsedStock) ? (localMatch?.stock ?? 50) : parsedStock,
+        };
       });
+
+      setMenuItems(itemsFromDb);
     }
   };
 
