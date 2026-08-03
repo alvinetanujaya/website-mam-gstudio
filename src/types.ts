@@ -51,6 +51,7 @@ export interface CartItem {
 
 export interface CustomerDetails {
   fullName: string;
+  phone: string;
   deliveryAddress: string;
   deliveryDate: string;
   notes: string;

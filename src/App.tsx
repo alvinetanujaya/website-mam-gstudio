@@ -222,6 +222,7 @@ export default function App() {
   // Customer Form details
   const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
     fullName: "",
+    phone: "",
     deliveryAddress: "",
     deliveryDate: "",
     notes: ""
@@ -548,6 +549,10 @@ export default function App() {
         alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
         return;
       }
+      if (!cleanPhone) {
+        alert("Silakan masukkan nomor handphone / WhatsApp Anda untuk koordinasi pengiriman.");
+        return;
+      }
       if (!cleanAddress) {
         alert("Silakan masukkan alamat lengkap pengiriman Anda.");
         return;
@@ -712,6 +717,10 @@ export default function App() {
       alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
       return;
     }
+    if (!customerDetails.phone.trim()) {
+      alert("Silakan masukkan nomor handphone / WhatsApp Anda untuk koordinasi pengiriman.");
+      return;
+    }
     if (!customerDetails.deliveryAddress.trim()) {
       alert("Silakan masukkan alamat lengkap pengiriman Anda.");
       return;
@@ -726,6 +735,7 @@ export default function App() {
     text += `==================================\n\n`;
     text += `*Detail Pelanggan & Pengiriman:*\n`;
     text += `👤 Nama: ${customerDetails.fullName}\n`;
+    text += `📱 No. HP/WA: ${customerDetails.phone}\n`;
     text += `📅 Tanggal Pengiriman: *${customerDetails.deliveryDate}*\n`;
     text += `📍 Alamat: ${customerDetails.deliveryAddress}\n`;
     if (customerDetails.notes.trim()) {
@@ -755,6 +765,7 @@ export default function App() {
     setCart([]);
     setCustomerDetails({
       fullName: "",
+      phone: "",
       deliveryAddress: "",
       deliveryDate: deliveryDateData.earliestDate,
       notes: ""
@@ -1801,6 +1812,21 @@ export default function App() {
                           value={customerDetails.fullName}
                           onChange={(e) => setCustomerDetails({ ...customerDetails, fullName: e.target.value })}
                           placeholder="Masukkan nama lengkap Anda"
+                          className="w-full bg-soft-cream/40 border border-outline/30 focus:border-terracotta focus:ring-1 focus:ring-terracotta rounded-xl px-4 py-3 text-sm md:text-base outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-espresso-dark uppercase tracking-wider mb-2" htmlFor="phone">
+                          Nomor Handphone / WhatsApp <span className="text-terracotta">*</span>
+                        </label>
+                        <input
+                          id="phone"
+                          type="tel"
+                          required
+                          value={customerDetails.phone}
+                          onChange={(e) => setCustomerDetails({ ...customerDetails, phone: e.target.value })}
+                          placeholder="Contoh: 081234567890"
                           className="w-full bg-soft-cream/40 border border-outline/30 focus:border-terracotta focus:ring-1 focus:ring-terracotta rounded-xl px-4 py-3 text-sm md:text-base outline-none transition-colors"
                         />
                       </div>
