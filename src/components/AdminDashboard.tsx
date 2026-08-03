@@ -112,8 +112,12 @@ CREATE TABLE IF NOT EXISTS products (
   name TEXT NOT NULL,
   price NUMERIC NOT NULL,
   stock INT NOT NULL DEFAULT 0,
+  image TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Jalankan baris ini jika tabel products sudah dibuat sebelumnya:
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT;
 
 -- 2. Tabel Pesanan / Transactions
 CREATE TABLE IF NOT EXISTS orders (
@@ -1697,6 +1701,19 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                     placeholder="50"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-espresso-dark block mb-1">
+                  URL Foto Menu
+                </label>
+                <input
+                  type="text"
+                  value={editImageInput}
+                  onChange={(e) => setEditImageInput(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-outline-variant/30 text-xs font-semibold focus:outline-none focus:border-terracotta"
+                  placeholder="https://images.unsplash.com/..."
+                />
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">

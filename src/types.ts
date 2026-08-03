@@ -14,6 +14,8 @@ export interface DbProduct {
   name: string;
   price: number;
   stock: number;
+  image?: string;
+  category?: string;
   created_at?: string;
 }
 
