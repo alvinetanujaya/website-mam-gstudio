@@ -106,20 +106,40 @@ export default function App() {
     const res = await fetchProductsFromSupabase();
     if (res && res.data && res.data.length > 0) {
       setMenuItems((prevItems) => {
-        // Map existing items with Supabase data
+        // Map existing items with Supabase data by matching Name first, then ID
         const updated = prevItems.map((item) => {
-          const matched = res.data.find((p) => {
-            const sameId = String(p.id) === String(item.id);
-            const sameName = (p.name || '').trim().toLowerCase() === item.name.trim().toLowerCase();
-            return sameId || sameName;
-          });
+          let matched = res.data.find(
+            (p) => (p.name || '').trim().toLowerCase() === item.name.trim().toLowerCase()
+          );
+          if (!matched) {
+            matched = res.data.find((p) => String(p.id) === String(item.id));
+          }
+
           if (matched) {
             const parsedStock = typeof matched.stock === 'number' ? matched.stock : Number(matched.stock);
+            
+            // Determine category
+            const itemName = matched.name || item.name || '';
+            const nameLower = itemName.toLowerCase();
+            let cat = matched.category || item.category;
+
+            if (
+              nameLower.includes("frozen") ||
+              nameLower.includes("ungkep") ||
+              nameLower.includes("paru") ||
+              nameLower.includes("bakso") ||
+              nameLower.includes("empal gentong") ||
+              nameLower.includes("ati ampela")
+            ) {
+              cat = "Frozen Food";
+            }
+
             return {
               ...item,
               id: Number(matched.id) || item.id,
               name: matched.name || item.name,
               price: Number(matched.price) || item.price,
+              category: cat,
               image: matched.image || item.image,
               stock: isNaN(parsedStock) ? item.stock : parsedStock,
             };
@@ -134,10 +154,25 @@ export default function App() {
           );
           if (!exists && dbItem.name) {
             const parsedStock = typeof dbItem.stock === 'number' ? dbItem.stock : Number(dbItem.stock);
+            const nameLower = dbItem.name.toLowerCase();
+            let cat = dbItem.category || "Frozen Food";
+            if (
+              nameLower.includes("frozen") ||
+              nameLower.includes("ungkep") ||
+              nameLower.includes("paru") ||
+              nameLower.includes("bakso") ||
+              nameLower.includes("empal gentong") ||
+              nameLower.includes("ati ampela")
+            ) {
+              cat = "Frozen Food";
+            } else if (!dbItem.category) {
+              cat = "Makanan Utama";
+            }
+
             updated.push({
               id: Number(dbItem.id) || Date.now(),
               name: dbItem.name,
-              category: "Spesial",
+              category: cat,
               price: Number(dbItem.price) || 25000,
               description: "Menu lezat pilihan dari MAM Culinary Heritage.",
               image: dbItem.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600",
@@ -887,7 +922,7 @@ export default function App() {
 
                 {/* Sub-menu categories */}
                 <div className="pl-8 space-y-1">
-                  {["Makanan Utama", "Cemilan", "Minuman"].map((cat) => (
+                  {["Makanan Utama", "Frozen Food"].map((cat) => (
                     <button
                       key={cat}
                       onClick={() => {
@@ -1491,7 +1526,7 @@ export default function App() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-4 border-b border-outline-variant/10">
               {/* Filter Pill-Tabs */}
               <div className="flex gap-2 overflow-x-auto hide-scrollbar py-1 max-w-full">
-                {["Semua", "Makanan Utama", "Cemilan", "Minuman"].map((cat) => (
+                {["Semua", "Makanan Utama", "Frozen Food"].map((cat) => (
                   <motion.button
                     key={cat}
                     whileHover={{ scale: 1.05 }}

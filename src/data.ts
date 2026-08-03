@@ -42,24 +42,104 @@ export const MENU_ITEMS: MenuItem[] = [
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCZXP1jIeTbOc41gmXWiOcilnaHvbbI0yiD7IT1Q2vsQeh_ICFeVSM1Rxf4D3f1uzcrwuJsA7bbAlSOpQuQBdKbEACzjVpiw5H9gnK_AyzjRy3ylLBDYg2KUO_xogx_SAfd_qGVja_Bfs_IZyk_oXRJI8I5vnw4VdDHXoGP3jXC8Z-vYzCRZowSGNgNyzAe2AXcfC5uvRd0ZvYLf9Y9lddsb4c8rQKQljlFbJ3E92lYt2tg2CfcJUIz7A"
   },
   {
-    id: 5,
-    name: "Risol Mayo Artisan",
-    desc: "Kulit renyah dengan isian smoked beef, telur rebus, dan saus mayo creamy gurih resep rahasia koki.",
-    price: 20000,
-    stock: 60,
-    category: "Cemilan",
+    id: 12,
+    name: "Nasi Kotak Ayam Penyet Sambal Ijo",
+    desc: "Nasi hangat gurih dengan ayam goreng crispy renyah dipenyet dengan sambal ijo segar, tahu, tempe, dan urap sayur rempah.",
+    price: 28000,
+    stock: 45,
+    category: "Makanan Utama",
     featured: false,
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuD9_QJ25hBsfrxrJJ5Rnoo75llA_GcAhdTMyJjmEGYSD9r53sYt_dld6DpLQVsm0lbIfctWQIAik9P9zNzxlgDWnc6J4kpgMinlZSpfASgY0nI-2pUSNPMOmlkinsUF-jtOAQsICMF4sM1Nrh9HvsNcuOgxSBGi5nvbZX8HhpMJFdGvLf8Vf21J7_s4VgZl12Ta9ytahVU7_GO5LbDQiq-dZOqrY0oPO5r1RawtbYfoxx8bXwH7hefoVg"
+    image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&q=80&w=600"
+  },
+  {
+    id: 13,
+    name: "Nasi Kotak Empal Serundeng",
+    desc: "Nasi putih pulen berpadu empal sapi goreng gurih bertabur serundeng kelapa wangi, orek tempe, telur dadar iris, dan sambal terasi.",
+    price: 32000,
+    stock: 35,
+    category: "Makanan Utama",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=600"
+  },
+  {
+    id: 14,
+    name: "Paket Prasmanan B (Spesial Nusantara)",
+    desc: "Paket catering mewah untuk 10+ porsi: Nasi Liwet khas, Rendang Daging, Ayam Lengkuas, Capcay Bakso, Kerupuk Udang, dan Es Teler.",
+    price: 85000,
+    stock: 80,
+    category: "Makanan Utama",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&q=80&w=600"
+  },
+  {
+    id: 5,
+    name: "Rendang Sapi Frozen (500g)",
+    desc: "Daging sapi rendang bumbu Padang racikan autentik, dikemas vakum tahan lama. Siap dihangatkan kapan saja.",
+    price: 95000,
+    stock: 40,
+    category: "Frozen Food",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600"
   },
   {
     id: 6,
-    name: "Es Kopi Susu Pandan",
-    desc: "Espresso house blend dipadu susu segar dingin dan sirup ekstrak pandan wangi alami buatan sendiri.",
-    price: 25000,
-    stock: 40,
-    category: "Minuman",
+    name: "Ayam Ungkep Bumbu Lengkuas (1 Ekor)",
+    desc: "Ayam negeri pilihan ungkep bumbu rempah melimpah. Praktis tinggal goreng atau panggang hingga keemasan.",
+    price: 65000,
+    stock: 35,
+    category: "Frozen Food",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&q=80&w=600"
+  },
+  {
+    id: 7,
+    name: "Paru Goreng Ketumbar Frozen (250g)",
+    desc: "Paru sapi renyah gurih berbalut bumbu ketumbar rempah. Cukup digoreng sebentar untuk tekstur renyah garing.",
+    price: 55000,
+    stock: 30,
+    category: "Frozen Food",
     featured: false,
-    image: "https://lh3.googleusercontent.com/aida-public/AB6AXuCpb5QdL5Q7VcWnRudoLTIlpzmDIht-YrLPgtDC9Nsd_HVwocSQKgcnwwj8n1XJEmtMy6bjJYkjZpQ80mgBH20pqQfCZW8e3G1CAgAGQKF6r7jKZF-1Kf63F5c8d4sw-0aMK-Mjkfh5ymWy6eDovf-_uPZd1BcKl5RZaqdQ8tht31AvJluJR6rF7NZOKixwVWbGxkxESMlwrWAkuRTMGF6wLMVX7dyGiAqSB11Y3RYsKPgKJB6nhYZAvg"
+    image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=600"
+  },
+  {
+    id: 8,
+    name: "Empal Gentong Sapi Frozen (300g)",
+    desc: "Daging sapi empal bumbu khas Cirebon manis gurih meresap sampai ke serat daging. Siap santap dalam 5 menit.",
+    price: 70000,
+    stock: 25,
+    category: "Frozen Food",
+    featured: false,
+    image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&q=80&w=600"
+  },
+  {
+    id: 9,
+    name: "Sambal Goreng Ati Ampela Frozen (300g)",
+    desc: "Ati ampela segar dimasak sambal balado merah pedas gurih. Sangat cocok disajikan dengan nasi hangat.",
+    price: 40000,
+    stock: 50,
+    category: "Frozen Food",
+    featured: false,
+    image: "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&q=80&w=600"
+  },
+  {
+    id: 10,
+    name: "Bebek Ungkep Madura Frozen (1 Ekor)",
+    desc: "Bebek utuh siap goreng lengkap dengan bumbu hitam khas Madura dan sambal pencit pedas asam segar.",
+    price: 85000,
+    stock: 20,
+    category: "Frozen Food",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1514944288352-fffac99f0bdf?auto=format&fit=crop&q=80&w=600"
+  },
+  {
+    id: 11,
+    name: "Bakso Daging Sapi Super Frozen (500g)",
+    desc: "Bakso sapi kenyal alami 100% daging sapi asli lengkap dengan kuah kaldu rempah dan bumbu pelengkap.",
+    price: 60000,
+    stock: 45,
+    category: "Frozen Food",
+    featured: false,
+    image: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&q=80&w=600"
   }
 ];
 

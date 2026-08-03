@@ -223,8 +223,8 @@ export async function updateSupabaseStock(productId: number, newStock: number): 
   }
 }
 
-// Update product full details (name, price, stock, image) in Supabase
-export async function updateSupabaseProduct(item: { id: number; name?: string; price?: number; stock?: number; image?: string }): Promise<{ success: boolean; message?: string }> {
+// Update product full details (name, category, price, stock, image) in Supabase
+export async function updateSupabaseProduct(item: { id: number; name?: string; category?: string; price?: number; stock?: number; image?: string }): Promise<{ success: boolean; message?: string }> {
   if (!supabase) {
     return { success: false, message: 'Supabase client tidak dikonfigurasi.' };
   }
@@ -232,6 +232,7 @@ export async function updateSupabaseProduct(item: { id: number; name?: string; p
   try {
     const updatePayload: Record<string, any> = {};
     if (item.name !== undefined) updatePayload.name = item.name.trim();
+    if (item.category !== undefined) updatePayload.category = item.category.trim();
     if (item.price !== undefined) updatePayload.price = Number(item.price);
     if (item.stock !== undefined) updatePayload.stock = Math.max(0, Number(item.stock));
     if (item.image !== undefined) updatePayload.image = item.image.trim();

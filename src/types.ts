@@ -3,7 +3,7 @@ export interface MenuItem {
   name: string;
   desc: string;
   price: number;
-  category: "Makanan Utama" | "Cemilan" | "Minuman";
+  category: string;
   featured: boolean;
   image: string;
   stock?: number;
