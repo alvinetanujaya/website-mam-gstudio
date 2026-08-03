@@ -525,9 +525,11 @@ export default function App() {
         }
         script.async = true;
         document.body.appendChild(script);
-      } else if (clientKey) {
-        // Ensure data-client-key is set on existing script tag
-        script.setAttribute("data-client-key", clientKey);
+      } else {
+        script.src = snapUrl;
+        if (clientKey) {
+          script.setAttribute("data-client-key", clientKey);
+        }
       }
     } catch (err) {
       console.warn("Gagal memuat script Midtrans Snap:", err);
