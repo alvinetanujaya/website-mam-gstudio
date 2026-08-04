@@ -254,6 +254,27 @@ export async function updateSupabaseProduct(item: { id: number; name?: string; c
   }
 }
 
+// Update order status in Supabase
+export async function updateSupabaseOrderStatus(orderId: string, newStatus: string): Promise<{ success: boolean; message?: string }> {
+  if (!supabase) {
+    return { success: false, message: 'Supabase client tidak dikonfigurasi.' };
+  }
+
+  try {
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: newStatus })
+      .eq('id', orderId);
+
+    if (error) {
+      return { success: false, message: formatSupabaseErrorMessage(error) };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: formatSupabaseErrorMessage(err) };
+  }
+}
+
 // Fetch order history from Supabase with order_items
 export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { order_items?: DbOrderItem[]; items?: DbOrderItem[] })[] | null; error: any }> {
   if (!supabase) {

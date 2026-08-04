@@ -46,7 +46,8 @@ import {
   updateSupabaseProduct,
   fetchSupabaseOrders,
   fetchAdminPin,
-  saveAdminPin
+  saveAdminPin,
+  updateSupabaseOrderStatus
 } from "../lib/supabase";
 
 interface AdminDashboardProps {
@@ -78,6 +79,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"daily_grouped" | "all_list">("daily_grouped");
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
 
   // Product Editing State
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
@@ -280,6 +282,19 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
       setOrders(data);
     }
     setIsLoadingOrders(false);
+  };
+
+  const handleOrderStatusChange = async (orderId: string, newStatus: string) => {
+    setUpdatingOrderId(orderId);
+    const res = await updateSupabaseOrderStatus(orderId, newStatus);
+    if (res.success) {
+      setOrders((prev) =>
+        prev.map((ord) => (ord.id === orderId ? { ...ord, status: newStatus } : ord))
+      );
+    } else {
+      alert(res.message || "Gagal memperbarui status transaksi.");
+    }
+    setUpdatingOrderId(null);
   };
 
   const handleSeed = async () => {
@@ -1474,15 +1489,33 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                                               </span>
                                             )}
                                           </div>
-                                          <span className={`px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] ${
-                                            isSettled
-                                              ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
-                                              : isPending 
-                                              ? "bg-amber-100 text-amber-800 border border-amber-200" 
-                                              : "bg-gray-100 text-gray-700 border border-gray-200"
-                                          }`}>
-                                            {ord.status}
-                                          </span>
+                                          <div className="flex items-center gap-2 flex-wrap justify-end">
+                                            <select
+                                              value={ord.status}
+                                              disabled={updatingOrderId === ord.id}
+                                              onChange={(e) => handleOrderStatusChange(ord.id, e.target.value)}
+                                              className="text-[11px] font-bold px-2 py-1 rounded-xl border border-outline-variant/30 bg-white focus:outline-none focus:border-terracotta cursor-pointer text-espresso-dark"
+                                            >
+                                              <option value="success">✅ Success / Lunas</option>
+                                              <option value="settlement">✅ Settlement</option>
+                                              <option value="pending_wa">📱 Pending WA</option>
+                                              <option value="pending">⏳ Pending Midtrans</option>
+                                              <option value="cancel">❌ Batal / Cancel</option>
+                                            </select>
+
+                                            {ord.status !== "settlement" && ord.status !== "success" && ord.status !== "lunas" && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleOrderStatusChange(ord.id, "success")}
+                                                disabled={updatingOrderId === ord.id}
+                                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                                                title="Klik untuk tandai pembayaran lunas dari WA / Transfer"
+                                              >
+                                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                                <span>{updatingOrderId === ord.id ? "..." : "Tandai Lunas"}</span>
+                                              </button>
+                                            )}
+                                          </div>
                                         </div>
 
                                         {/* Customer Info */}
@@ -1575,15 +1608,33 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                                   {ord.created_at ? new Date(ord.created_at).toLocaleString("id-ID") : "Baru saja"}
                                 </span>
                               </div>
-                              <span className={`px-2.5 py-0.5 rounded-full font-bold uppercase text-[10px] ${
-                                isSettled
-                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
-                                  : isPending 
-                                  ? "bg-amber-100 text-amber-800 border border-amber-200" 
-                                  : "bg-gray-100 text-gray-700 border border-gray-200"
-                              }`}>
-                                {ord.status}
-                              </span>
+                              <div className="flex items-center gap-2 flex-wrap justify-end">
+                                <select
+                                  value={ord.status}
+                                  disabled={updatingOrderId === ord.id}
+                                  onChange={(e) => handleOrderStatusChange(ord.id, e.target.value)}
+                                  className="text-[11px] font-bold px-2 py-1 rounded-xl border border-outline-variant/30 bg-white focus:outline-none focus:border-terracotta cursor-pointer text-espresso-dark"
+                                >
+                                  <option value="success">✅ Success / Lunas</option>
+                                  <option value="settlement">✅ Settlement</option>
+                                  <option value="pending_wa">📱 Pending WA</option>
+                                  <option value="pending">⏳ Pending Midtrans</option>
+                                  <option value="cancel">❌ Batal / Cancel</option>
+                                </select>
+
+                                {ord.status !== "settlement" && ord.status !== "success" && ord.status !== "lunas" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOrderStatusChange(ord.id, "success")}
+                                    disabled={updatingOrderId === ord.id}
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                                    title="Klik untuk tandai pembayaran lunas dari WA / Transfer"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>{updatingOrderId === ord.id ? "..." : "Tandai Lunas"}</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
 
                             {/* Customer & Total */}
