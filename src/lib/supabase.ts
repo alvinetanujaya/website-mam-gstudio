@@ -179,14 +179,15 @@ export async function recordSupabaseOrder(params: {
     // 3. Decrement Stock for each product
     for (const item of params.items) {
       if (item.productId) {
-        // Fetch current stock first
+        // Fetch current stock and category first
         const { data: prodData } = await supabase
           .from('products')
-          .select('stock')
+          .select('stock, category')
           .eq('id', item.productId)
           .single();
 
-        if (prodData && typeof prodData.stock === 'number') {
+        // Skip stock decrement for 'Menu Mingguan' items (unlimited stock)
+        if (prodData && prodData.category !== 'Menu Mingguan' && typeof prodData.stock === 'number') {
           const newStock = Math.max(0, prodData.stock - item.quantity);
           await supabase
             .from('products')

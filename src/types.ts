@@ -7,6 +7,9 @@ export interface MenuItem {
   featured: boolean;
   image: string;
   stock?: number;
+  dayNumber?: number; // 1 (Senin) .. 7 (Minggu)
+  dayName?: string;
+  isWeekly?: boolean;
 }
 
 export interface DbProduct {

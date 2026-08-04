@@ -140,6 +140,91 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "Frozen Food",
     featured: false,
     image: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&q=80&w=600"
+  },
+  /* MENU MINGGUAN (1 Menu Per Hari) */
+  {
+    id: 101,
+    name: "[Senin] Nasi Ayam Geprek Sambal Korek",
+    desc: "Menu Senin: Nasi hangat, ayam geprek renyah dengan sambal korek pedas gurih, tahu, tempe, & lalapan segar.",
+    price: 26000,
+    category: "Menu Mingguan",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&q=80&w=600",
+    dayNumber: 1,
+    dayName: "Senin",
+    isWeekly: true
+  },
+  {
+    id: 102,
+    name: "[Selasa] Nasi Sapi Lada Hitam",
+    desc: "Menu Selasa: Nasi pulen, tumis daging sapi lada hitam wangi dengan paprika segar & capcay sayur rempah.",
+    price: 32000,
+    category: "Menu Mingguan",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=600",
+    dayNumber: 2,
+    dayName: "Selasa",
+    isWeekly: true
+  },
+  {
+    id: 103,
+    name: "[Rabu] Nasi Ayam Goreng Mentega",
+    desc: "Menu Rabu: Ayam goreng saus mentega gurih manis, telur dadar iris, & tumis buncis bakso hangat.",
+    price: 27000,
+    category: "Menu Mingguan",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&q=80&w=600",
+    dayNumber: 3,
+    dayName: "Rabu",
+    isWeekly: true
+  },
+  {
+    id: 104,
+    name: "[Kamis] Nasi Soto Ayam Lamongan Spesial",
+    desc: "Menu Kamis: Nasi hangat dengan soto ayam kuah kuning koya gurih, telur rebus, & sambal pedas.",
+    price: 25000,
+    category: "Menu Mingguan",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600",
+    dayNumber: 4,
+    dayName: "Kamis",
+    isWeekly: true
+  },
+  {
+    id: 105,
+    name: "[Jumat] Nasi Kebuli Ayam Rempah",
+    desc: "Menu Jumat: Nasi kebuli aromatik wangi rempah dengan ayam bakar empuk, acar nanas, & kerupuk.",
+    price: 30000,
+    category: "Menu Mingguan",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?auto=format&fit=crop&q=80&w=600",
+    dayNumber: 5,
+    dayName: "Jumat",
+    isWeekly: true
+  },
+  {
+    id: 106,
+    name: "[Sabtu] Nasi Kuning Komplit MAM",
+    desc: "Menu Sabtu: Nasi kuning gurih, ayam suwir, perkedel kentang, orek tempe, & sambal goreng ati.",
+    price: 28000,
+    category: "Menu Mingguan",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1514944288352-fffac99f0bdf?auto=format&fit=crop&q=80&w=600",
+    dayNumber: 6,
+    dayName: "Sabtu",
+    isWeekly: true
+  },
+  {
+    id: 107,
+    name: "[Minggu] Nasi Liwet Teri Kacang",
+    desc: "Menu Minggu: Nasi liwet aromatik bertabur teri Medan & kacang, ayam goreng kalasan, & sambal terasi.",
+    price: 29000,
+    category: "Menu Mingguan",
+    featured: true,
+    image: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&q=80&w=600",
+    dayNumber: 7,
+    dayName: "Minggu",
+    isWeekly: true
   }
 ];
 

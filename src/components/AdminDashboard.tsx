@@ -1150,15 +1150,15 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                       </h4>
 
                       {/* Category Filter Pills */}
-                      <div className="flex items-center gap-1.5 bg-warm-cream/60 p-1 rounded-xl border border-outline-variant/15 self-start sm:self-auto">
-                        {["Semua", "Makanan Utama", "Frozen Food"].map((cat) => {
-                          const count = cat === "Semua" ? menuItems.length : menuItems.filter(m => m.category === cat).length;
+                      <div className="flex items-center gap-1.5 bg-warm-cream/60 p-1 rounded-xl border border-outline-variant/15 self-start sm:self-auto overflow-x-auto max-w-full">
+                        {["Semua", "Menu Mingguan", "Makanan Utama", "Frozen Food"].map((cat) => {
+                          const count = cat === "Semua" ? menuItems.length : menuItems.filter(m => m.category === cat || (cat === "Menu Mingguan" && m.isWeekly)).length;
                           const isActive = stockCategoryFilter === cat;
                           return (
                             <button
                               key={cat}
                               onClick={() => setStockCategoryFilter(cat)}
-                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                                 isActive
                                   ? "bg-terracotta text-white shadow-xs"
                                   : "text-espresso-dark/70 hover:text-espresso-dark hover:bg-white/50"
@@ -1173,7 +1173,7 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
 
                     <div className="divide-y divide-outline-variant/15 border border-outline-variant/20 rounded-2xl overflow-hidden bg-white">
                       {menuItems
-                        .filter(item => stockCategoryFilter === "Semua" || item.category === stockCategoryFilter)
+                        .filter(item => stockCategoryFilter === "Semua" || item.category === stockCategoryFilter || (stockCategoryFilter === "Menu Mingguan" && item.isWeekly))
                         .map((item) => {
                         const currentStock = item.stock ?? 50;
                         const isOut = currentStock <= 0;

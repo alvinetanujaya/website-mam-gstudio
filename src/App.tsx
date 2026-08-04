@@ -33,6 +33,7 @@ import { MENU_ITEMS, CUSTOMIZATION_OPTIONS, FAQS } from "./data";
 import { MenuItem, CustomizationOption, CartItem, CustomerDetails, DbProduct } from "./types";
 import { MamLogo } from "./components/MamLogo";
 import { AdminDashboard } from "./components/AdminDashboard";
+import { WeeklyMenuSection, getCurrentIndonesianDayNumber, getWeeklyMenuAvailability } from "./components/WeeklyMenuSection";
 import { 
   isSupabaseConfigured, 
   fetchProductsFromSupabase, 
@@ -40,6 +41,31 @@ import {
   subscribeToProducts
 } from "./lib/supabase";
 import heroSapiLadaHitam from "./assets/images/regenerated_image_1785694387233.png";
+
+// Helper to infer weekly menu day properties if missing
+const enrichWeeklyProperties = (item: MenuItem): MenuItem => {
+  const nameLower = (item.name || "").toLowerCase();
+  let dayNumber = item.dayNumber;
+  let dayName = item.dayName;
+  let isWeekly = item.isWeekly || item.category === "Menu Mingguan";
+
+  if (!dayNumber) {
+    if (nameLower.includes("senin")) { dayNumber = 1; dayName = "Senin"; isWeekly = true; }
+    else if (nameLower.includes("selasa")) { dayNumber = 2; dayName = "Selasa"; isWeekly = true; }
+    else if (nameLower.includes("rabu")) { dayNumber = 3; dayName = "Rabu"; isWeekly = true; }
+    else if (nameLower.includes("kamis")) { dayNumber = 4; dayName = "Kamis"; isWeekly = true; }
+    else if (nameLower.includes("jumat")) { dayNumber = 5; dayName = "Jumat"; isWeekly = true; }
+    else if (nameLower.includes("sabtu")) { dayNumber = 6; dayName = "Sabtu"; isWeekly = true; }
+    else if (nameLower.includes("minggu")) { dayNumber = 7; dayName = "Minggu"; isWeekly = true; }
+  }
+
+  return {
+    ...item,
+    dayNumber,
+    dayName,
+    isWeekly,
+  };
+};
 
 export default function App() {
   // Navigation & UI States
@@ -99,7 +125,7 @@ export default function App() {
   };
 
   // Dynamic Menu Items State with Supabase stock integration
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(() => MENU_ITEMS.map(enrichWeeklyProperties));
 
   // Function to sync products/name/price/stock from Supabase
   const loadSupabaseProducts = async () => {
@@ -144,12 +170,14 @@ export default function App() {
             nameLower.includes("ati ampela")
           ) {
             cat = "Frozen Food";
+          } else if (nameLower.includes("senin") || nameLower.includes("selasa") || nameLower.includes("rabu") || nameLower.includes("kamis") || nameLower.includes("jumat") || nameLower.includes("sabtu") || nameLower.includes("minggu")) {
+            cat = "Menu Mingguan";
           } else {
             cat = localMatch?.category || "Makanan Utama";
           }
         }
 
-        return {
+        const rawItem: MenuItem = {
           id: Number(dbItem.id),
           name: dbItem.name || localMatch?.name || 'Menu',
           desc: localMatch?.desc || "Menu lezat pilihan dari MAM Culinary Heritage.",
@@ -158,8 +186,23 @@ export default function App() {
           image: dbItem.image || localMatch?.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600",
           featured: localMatch?.featured ?? true,
           stock: isNaN(parsedStock) ? (localMatch?.stock ?? 50) : parsedStock,
+          dayNumber: localMatch?.dayNumber,
+          dayName: localMatch?.dayName,
+          isWeekly: localMatch?.isWeekly || cat === "Menu Mingguan",
         };
+
+        return enrichWeeklyProperties(rawItem);
       });
+
+      // Ensure default MENU_ITEMS that are category "Menu Mingguan" exist in itemsFromDb
+      const weeklyLocalItems = MENU_ITEMS.filter((m) => m.category === "Menu Mingguan" || m.isWeekly);
+      for (const wItem of weeklyLocalItems) {
+        const enriched = enrichWeeklyProperties(wItem);
+        const exists = itemsFromDb.some((i) => i.id === enriched.id || i.name.toLowerCase().trim() === enriched.name.toLowerCase().trim());
+        if (!exists) {
+          itemsFromDb.push(enriched);
+        }
+      }
 
       setMenuItems(itemsFromDb);
     }
@@ -322,12 +365,84 @@ export default function App() {
 
   // Helper: Find current active category items
   const filteredMenu = useMemo(() => {
-    if (activeCategory === "Semua") return menuItems;
+    if (activeCategory === "Semua") {
+      return menuItems.filter((item) => item.category !== "Menu Mingguan" && !item.isWeekly);
+    }
+    if (activeCategory === "📅 Menu Mingguan" || activeCategory === "Menu Mingguan") {
+      return menuItems.filter((item) => item.category === "Menu Mingguan" || item.isWeekly);
+    }
     return menuItems.filter((item) => item.category === activeCategory);
   }, [activeCategory, menuItems]);
 
   // Flat shipping fee (Ongkos Kirim Flat)
   const SHIPPING_FEE = 15000;
+
+  // Helper to map day numbers to Indonesian day names
+  const daysIndoMap = ["", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+
+  // Separated cart items
+  const weeklyCartItems = useMemo(() => {
+    return cart.filter((item) => item.menuItem.category === "Menu Mingguan" || item.menuItem.isWeekly);
+  }, [cart]);
+
+  const nonWeeklyCartItems = useMemo(() => {
+    return cart.filter((item) => !(item.menuItem.category === "Menu Mingguan" || item.menuItem.isWeekly));
+  }, [cart]);
+
+  const hasWeeklyItems = useMemo(() => weeklyCartItems.length > 0, [weeklyCartItems]);
+  const hasNonWeeklyItems = useMemo(() => nonWeeklyCartItems.length > 0, [nonWeeklyCartItems]);
+
+  // Dynamic Shipping Fee & Delivery Trips Calculation
+  const deliveryTripsData = useMemo(() => {
+    if (cart.length === 0) {
+      return {
+        tripsCount: 0,
+        totalShippingFee: 0,
+        uniqueDaysList: [],
+        isSameDayMerged: false,
+      };
+    }
+
+    const uniqueDaysSet = new Set<string>();
+
+    // 1. Weekly menu items: Each has a fixed day name (e.g., "Kamis")
+    weeklyCartItems.forEach((item) => {
+      let dayName = item.menuItem.dayName;
+      if (!dayName && item.menuItem.dayNumber && daysIndoMap[item.menuItem.dayNumber]) {
+        dayName = daysIndoMap[item.menuItem.dayNumber];
+      }
+      if (!dayName) {
+        dayName = "Menu Mingguan";
+      }
+      uniqueDaysSet.add(dayName.trim());
+    });
+
+    // 2. Non-weekly menu items: Scheduled on customerDetails.deliveryDate (e.g., "Kamis, 06 Agustus 2026")
+    if (nonWeeklyCartItems.length > 0) {
+      let regDay = "Menu Reguler";
+      if (customerDetails.deliveryDate) {
+        const parts = customerDetails.deliveryDate.split(",");
+        if (parts.length > 0 && parts[0].trim()) {
+          regDay = parts[0].trim();
+        }
+      }
+      uniqueDaysSet.add(regDay);
+    }
+
+    const uniqueDaysList = Array.from(uniqueDaysSet);
+    const tripsCount = Math.max(1, uniqueDaysList.length);
+    const totalShippingFee = tripsCount * SHIPPING_FEE;
+
+    // Same day merged check: Both weekly & non-weekly items exist and fall on 1 single delivery day
+    const isSameDayMerged = weeklyCartItems.length > 0 && nonWeeklyCartItems.length > 0 && tripsCount === 1;
+
+    return {
+      tripsCount,
+      totalShippingFee,
+      uniqueDaysList,
+      isSameDayMerged,
+    };
+  }, [cart, weeklyCartItems, nonWeeklyCartItems, customerDetails.deliveryDate, SHIPPING_FEE]);
 
   // Helper: Cart calculations
   const totalItemsCount = useMemo(() => {
@@ -339,8 +454,8 @@ export default function App() {
   }, [cart]);
 
   const grandTotal = useMemo(() => {
-    return cart.length > 0 ? totalPrice + SHIPPING_FEE : 0;
-  }, [cart, totalPrice]);
+    return cart.length > 0 ? totalPrice + deliveryTripsData.totalShippingFee : 0;
+  }, [cart, totalPrice, deliveryTripsData.totalShippingFee]);
 
   // Open detail view modal
   const handleOpenDetail = (item: MenuItem) => {
@@ -368,12 +483,21 @@ export default function App() {
     return selectedItem.price + customizationsCost;
   }, [selectedItem, selectedCustomizations]);
 
-  // Add Item to Cart from Detail Modal with stock check
+  // Add Item to Cart from Detail Modal with stock check & H-1 20:00 cutoff check
   const handleAddToCartFromModal = () => {
     if (!selectedItem) return;
 
-    const availableStock = selectedItem.stock ?? 50;
-    if (availableStock <= 0) {
+    const isWeekly = selectedItem.category === "Menu Mingguan" || selectedItem.isWeekly;
+    if (isWeekly && selectedItem.dayNumber) {
+      const avail = getWeeklyMenuAvailability(selectedItem.dayNumber);
+      if (!avail.isOrderable) {
+        setToastMessage(`Maaf! ${avail.reason}`);
+        return;
+      }
+    }
+
+    const availableStock = isWeekly ? 999999 : (selectedItem.stock ?? 50);
+    if (!isWeekly && availableStock <= 0) {
       setToastMessage(`Maaf, stok ${selectedItem.name} sedang habis.`);
       return;
     }
@@ -383,7 +507,7 @@ export default function App() {
       .filter((c) => c.menuItem.id === selectedItem.id)
       .reduce((sum, c) => sum + c.quantity, 0);
 
-    if (existingInCart + modalQuantity > availableStock) {
+    if (!isWeekly && existingInCart + modalQuantity > availableStock) {
       setToastMessage(`Stok ${selectedItem.name} terbatas! Sisa stok: ${availableStock}`);
       return;
     }
@@ -415,10 +539,19 @@ export default function App() {
     setSelectedItem(null);
   };
 
-  // Quick Direct Add to Cart from Catalog with stock check
+  // Quick Direct Add to Cart from Catalog with stock check & H-1 20:00 cutoff check
   const handleQuickAdd = (item: MenuItem) => {
-    const availableStock = item.stock ?? 50;
-    if (availableStock <= 0) {
+    const isWeekly = item.category === "Menu Mingguan" || item.isWeekly;
+    if (isWeekly && item.dayNumber) {
+      const avail = getWeeklyMenuAvailability(item.dayNumber);
+      if (!avail.isOrderable) {
+        setToastMessage(`Maaf! ${avail.reason}`);
+        return;
+      }
+    }
+
+    const availableStock = isWeekly ? 999999 : (item.stock ?? 50);
+    if (!isWeekly && availableStock <= 0) {
       setToastMessage(`Maaf, stok ${item.name} sedang habis.`);
       return;
     }
@@ -427,7 +560,7 @@ export default function App() {
       .filter((c) => c.menuItem.id === item.id)
       .reduce((sum, c) => sum + c.quantity, 0);
 
-    if (existingInCart + 1 > availableStock) {
+    if (!isWeekly && existingInCart + 1 > availableStock) {
       setToastMessage(`Stok ${item.name} terbatas! Sisa stok: ${availableStock}`);
       return;
     }
@@ -461,9 +594,10 @@ export default function App() {
       return prevCart
         .map((item) => {
           if (item.id === id) {
-            const availableStock = item.menuItem.stock ?? 50;
+            const isWeekly = item.menuItem.category === "Menu Mingguan" || item.menuItem.isWeekly;
+            const availableStock = isWeekly ? 999999 : (item.menuItem.stock ?? 50);
             const nextQty = item.quantity + change;
-            if (change > 0 && nextQty > availableStock) {
+            if (!isWeekly && change > 0 && nextQty > availableStock) {
               setToastMessage(`Stok ${item.menuItem.name} maksimal ${availableStock} porsi.`);
               return item;
             }
@@ -546,8 +680,21 @@ export default function App() {
       const cleanName = String(customerDetails?.fullName || "").trim();
       const cleanPhone = String(customerDetails?.phone || "").trim();
       const cleanAddress = String(customerDetails?.deliveryAddress || "").trim();
-      const cleanDate = String(customerDetails?.deliveryDate || "").trim();
+      const rawDate = String(customerDetails?.deliveryDate || "").trim();
       const cleanNotes = String(customerDetails?.notes || "").trim();
+
+      // Determine effective delivery date: if only weekly menu items, use automatic weekly schedule string
+      const selectedWeeklyDays = cart
+        .filter((c) => c.menuItem.category === "Menu Mingguan" || c.menuItem.isWeekly)
+        .map((c) => c.menuItem.dayName || c.menuItem.name)
+        .filter(Boolean);
+      const weeklyScheduleText = selectedWeeklyDays.length > 0 
+        ? `Sesuai Jadwal Hari Menu (${Array.from(new Set(selectedWeeklyDays)).join(", ")})`
+        : "Sesuai Jadwal Hari Menu Mingguan";
+
+      const cleanDate = !hasNonWeeklyItems && hasWeeklyItems 
+        ? weeklyScheduleText 
+        : (rawDate || (hasWeeklyItems ? weeklyScheduleText : ""));
 
       if (!cleanName) {
         alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
@@ -561,7 +708,7 @@ export default function App() {
         alert("Silakan masukkan alamat lengkap pengiriman Anda.");
         return;
       }
-      if (!cleanDate) {
+      if (hasNonWeeklyItems && !cleanDate) {
         alert("Silakan pilih tanggal pengiriman pesanan Anda.");
         return;
       }
@@ -586,9 +733,9 @@ export default function App() {
 
       itemsList.push({
         id: "SHIPPING-FEE",
-        name: "Ongkos Kirim (Flat Rate)",
+        name: `Ongkos Kirim (${deliveryTripsData.tripsCount}x Pengiriman - ${deliveryTripsData.uniqueDaysList.join(", ")})`,
         price: Number(SHIPPING_FEE || 0),
-        quantity: 1,
+        quantity: deliveryTripsData.tripsCount,
       });
 
       const payloadString = JSON.stringify({
@@ -720,8 +867,21 @@ export default function App() {
     const cleanName = String(customerDetails?.fullName || "").trim();
     const cleanPhone = String(customerDetails?.phone || "").trim();
     const cleanAddress = String(customerDetails?.deliveryAddress || "").trim();
-    const cleanDate = String(customerDetails?.deliveryDate || "").trim();
+    const rawDate = String(customerDetails?.deliveryDate || "").trim();
     const cleanNotes = String(customerDetails?.notes || "").trim();
+
+    // Determine effective delivery date
+    const selectedWeeklyDays = cart
+      .filter((c) => c.menuItem.category === "Menu Mingguan" || c.menuItem.isWeekly)
+      .map((c) => c.menuItem.dayName || c.menuItem.name)
+      .filter(Boolean);
+    const weeklyScheduleText = selectedWeeklyDays.length > 0 
+      ? `Sesuai Jadwal Hari Menu (${Array.from(new Set(selectedWeeklyDays)).join(", ")})`
+      : "Sesuai Jadwal Hari Menu Mingguan";
+
+    const cleanDate = !hasNonWeeklyItems && hasWeeklyItems 
+      ? weeklyScheduleText 
+      : (rawDate || (hasWeeklyItems ? weeklyScheduleText : ""));
 
     if (!cleanName) {
       alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
@@ -735,7 +895,7 @@ export default function App() {
       alert("Silakan masukkan alamat lengkap pengiriman Anda.");
       return;
     }
-    if (!cleanDate) {
+    if (hasNonWeeklyItems && !cleanDate) {
       alert("Silakan pilih tanggal pengiriman pesanan Anda.");
       return;
     }
@@ -745,12 +905,30 @@ export default function App() {
       return;
     }
 
-    const itemsText = cart.map((c, i) => {
-      const opts = c.selectedOptions && c.selectedOptions.length > 0
-        ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})`
-        : "";
-      return `${i + 1}. *${c.quantity}x ${c.menuItem.name}*${opts} - ${formatIDR(c.unitPrice * c.quantity)}`;
-    }).join("\n");
+    const weeklyText = weeklyCartItems.length > 0
+      ? `📅 *MENU MINGGUAN:*\n` + weeklyCartItems.map((c, i) => {
+          const opts = c.selectedOptions && c.selectedOptions.length > 0
+            ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})`
+            : "";
+          const dayLabel = c.menuItem.dayName ? ` [Hari ${c.menuItem.dayName}]` : "";
+          return `${i + 1}. *${c.quantity}x ${c.menuItem.name}*${dayLabel}${opts} - ${formatIDR(c.unitPrice * c.quantity)}`;
+        }).join("\n")
+      : "";
+
+    const nonWeeklyText = nonWeeklyCartItems.length > 0
+      ? `🍲 *MENU REGULER / LAINNYA:*\n` + nonWeeklyCartItems.map((c, i) => {
+          const opts = c.selectedOptions && c.selectedOptions.length > 0
+            ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})`
+            : "";
+          return `${i + 1}. *${c.quantity}x ${c.menuItem.name}*${opts} - ${formatIDR(c.unitPrice * c.quantity)}`;
+        }).join("\n")
+      : "";
+
+    const shippingInfoText = deliveryTripsData.tripsCount > 1
+      ? `🚚 Ongkos Kirim (${deliveryTripsData.tripsCount}x Pengiriman: ${deliveryTripsData.uniqueDaysList.join(" & ")}): ${formatIDR(deliveryTripsData.totalShippingFee)}`
+      : deliveryTripsData.isSameDayMerged
+      ? `🚚 Ongkos Kirim (1x Pengiriman - Hemat dikirim bersamaan pada ${deliveryTripsData.uniqueDaysList.join(", ")}): ${formatIDR(deliveryTripsData.totalShippingFee)}`
+      : `🚚 Ongkos Kirim (1x Pengiriman): ${formatIDR(deliveryTripsData.totalShippingFee)}`;
 
     const message = 
 `Halo MAM catering, saya mau pesan manual via WhatsApp:
@@ -762,11 +940,10 @@ export default function App() {
 📍 Alamat Pengiriman: ${cleanAddress}
 ${cleanNotes ? `📝 Catatan: ${cleanNotes}\n` : ""}
 *RINCIAN PESANAN:*
-${itemsText}
 
-💵 Subtotal: ${formatIDR(totalPrice)}
-🚚 Ongkir (Flat): ${formatIDR(SHIPPING_FEE)}
-💰 *TOTAL: ${formatIDR(grandTotal)}*
+${weeklyText ? weeklyText + "\n\n" : ""}${nonWeeklyText ? nonWeeklyText + "\n\n" : ""}💵 Subtotal Hidangan: ${formatIDR(totalPrice)}
+${shippingInfoText}
+💰 *TOTAL PEMBAYARAN: ${formatIDR(grandTotal)}*
 
 Mohon diproses ya min, terima kasih!`;
 
@@ -1068,6 +1245,16 @@ Mohon diproses ya min, terima kasih!`;
                   </div>
                 </div>
               </div>
+            </section>
+
+            {/* WEEKLY MENU SECTION ON HOME PAGE */}
+            <section className="px-6 py-6 max-w-7xl mx-auto">
+              <WeeklyMenuSection
+                menuItems={menuItems}
+                onAddToCart={handleQuickAdd}
+                onOpenDetail={handleOpenDetail}
+                formatIDR={formatIDR}
+              />
             </section>
 
             {/* FEATURED SLIDE MENU SECTION ON HOME PAGE */}
@@ -1516,14 +1703,14 @@ Mohon diproses ya min, terima kasih!`;
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-4 border-b border-outline-variant/10">
               {/* Filter Pill-Tabs */}
               <div className="flex gap-2 overflow-x-auto hide-scrollbar smooth-scroll-x touch-pan-x py-1 max-w-full">
-                {["Semua", "Makanan Utama", "Frozen Food"].map((cat) => (
+                {["Semua", "📅 Menu Mingguan", "Makanan Utama", "Frozen Food"].map((cat) => (
                   <motion.button
                     key={cat}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setActiveCategory(cat)}
                     className={`px-5 py-2.5 rounded-full font-bold text-sm whitespace-nowrap transition-all duration-200 cursor-pointer ${
-                      activeCategory === cat
+                      activeCategory === cat || (cat === "📅 Menu Mingguan" && activeCategory === "Menu Mingguan")
                         ? "bg-terracotta text-soft-cream shadow-md"
                         : "bg-surface-container-high/60 text-espresso-dark hover:bg-espresso-dark/5"
                     }`}
@@ -1555,53 +1742,67 @@ Mohon diproses ya min, terima kasih!`;
               </div>
             </div>
 
+            {/* Render Weekly Menu Grid View if selected or on Semua */}
+            {(activeCategory === "Semua" || activeCategory === "📅 Menu Mingguan" || activeCategory === "Menu Mingguan") && (
+              <WeeklyMenuSection
+                menuItems={menuItems}
+                onAddToCart={handleQuickAdd}
+                onOpenDetail={handleOpenDetail}
+                formatIDR={formatIDR}
+              />
+            )}
+
             {/* Horizontal Slide Carousel Menu Catalog */}
-            <div 
-              ref={menuScrollRef}
-              className="flex gap-6 overflow-x-auto snap-x snap-proximity pb-8 pt-2 hide-scrollbar smooth-scroll-x touch-pan-x touch-pan-y transform-gpu"
-            >
-              {filteredMenu.map((item) => {
-                const itemStock = item.stock ?? 50;
-                const isOut = itemStock <= 0;
+            {filteredMenu.length > 0 && (
+              <div 
+                ref={menuScrollRef}
+                className="flex gap-6 overflow-x-auto snap-x snap-proximity pb-8 pt-2 hide-scrollbar smooth-scroll-x touch-pan-x touch-pan-y transform-gpu"
+              >
+                {filteredMenu.map((item) => {
+                  const isWeekly = item.category === "Menu Mingguan" || item.isWeekly;
+                  const itemStock = isWeekly ? 999999 : (item.stock ?? 50);
+                  const isOut = !isWeekly && itemStock <= 0;
 
-                return (
-                  <div
-                    key={item.id}
-                    className="flex-none w-[280px] sm:w-[320px] md:w-[360px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-xl hover:-translate-y-1.5 border border-outline-variant/25 transition-all duration-300 flex flex-col group relative transform-gpu will-change-transform"
-                  >
-                    {/* Best Seller Overlay badge */}
-                    {item.featured && (
-                      <div className="absolute top-4 left-4 bg-terracotta text-soft-cream font-bold text-xs uppercase tracking-wider px-3 py-1.5 rounded-lg z-10 flex items-center gap-1 shadow-sm">
-                        <Star className="w-3.5 h-3.5 fill-current" />
-                        <span>Best Seller</span>
-                      </div>
-                    )}
-
-                    {/* Product Image Clickable to trigger detail modal */}
-                    <div 
-                      onClick={() => handleOpenDetail(item)}
-                      className="relative overflow-hidden cursor-pointer bg-espresso-dark/5 shrink-0 w-full h-48 md:h-52"
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex-none w-[280px] sm:w-[320px] md:w-[360px] snap-start bg-white rounded-3xl overflow-hidden shadow-[0_4px_24px_rgba(44,27,18,0.04)] hover:shadow-xl hover:-translate-y-1.5 border border-outline-variant/25 transition-all duration-300 flex flex-col group relative transform-gpu will-change-transform"
                     >
-                      <img
-                        className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
-                        alt={item.name}
-                        src={item.image}
-                      />
+                      {/* Best Seller Overlay badge */}
+                      {item.featured && (
+                        <div className="absolute top-4 left-4 bg-terracotta text-soft-cream font-bold text-xs uppercase tracking-wider px-3 py-1.5 rounded-lg z-10 flex items-center gap-1 shadow-sm">
+                          <Star className="w-3.5 h-3.5 fill-current" />
+                          <span>Best Seller</span>
+                        </div>
+                      )}
 
-                      {/* Stock badge overlay */}
-                      <div className="absolute bottom-3 right-3 z-10">
-                        <span
-                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shadow-xs backdrop-blur-md ${
-                            isOut
-                              ? "bg-red-600/90 text-white border-red-500"
-                              : itemStock < 10
-                              ? "bg-amber-500/90 text-white border-amber-400"
-                              : "bg-black/60 text-white border-white/20"
-                          }`}
-                        >
-                          {isOut ? "Stok Habis" : `Stok: ${itemStock}`}
-                        </span>
-                      </div>
+                      {/* Product Image Clickable to trigger detail modal */}
+                      <div 
+                        onClick={() => handleOpenDetail(item)}
+                        className="relative overflow-hidden cursor-pointer bg-espresso-dark/5 shrink-0 w-full h-48 md:h-52"
+                      >
+                        <img
+                          className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                          alt={item.name}
+                          src={item.image}
+                        />
+
+                        {/* Stock badge overlay */}
+                        <div className="absolute bottom-3 right-3 z-10">
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shadow-xs backdrop-blur-md ${
+                              isWeekly
+                                ? "bg-emerald-600/90 text-white border-emerald-400"
+                                : isOut
+                                ? "bg-red-600/90 text-white border-red-500"
+                                : itemStock < 10
+                                ? "bg-amber-500/90 text-white border-amber-400"
+                                : "bg-black/60 text-white border-white/20"
+                            }`}
+                          >
+                            {isWeekly ? "♾️ Tanpa Batas Stok" : isOut ? "Stok Habis" : `Stok: ${itemStock}`}
+                          </span>
+                        </div>
 
                       <div className="absolute inset-0 bg-espresso-dark/15 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-xs">
                         <span className="bg-white/95 text-espresso-dark px-4 py-2 rounded-full font-bold text-xs shadow-md">
@@ -1656,6 +1857,7 @@ Mohon diproses ya min, terima kasih!`;
                 );
               })}
             </div>
+          )}
 
             {/* Catalog Info Warning */}
             <div className="mt-16 bg-surface-container-high/40 p-6 rounded-2xl max-w-3xl mx-auto flex gap-4 items-center border border-outline-variant/15 text-xs md:text-sm text-espresso-dark/85">
@@ -1703,60 +1905,151 @@ Mohon diproses ya min, terima kasih!`;
                       <span>Ringkasan Hidangan</span>
                     </h2>
 
-                    <div className="flex flex-col gap-6 divide-y divide-outline-variant/15">
-                      {cart.map((item) => (
-                        <div key={item.id} className="flex gap-4 pt-4 first:pt-0 items-start">
-                          <img
-                            className="w-16 h-16 object-cover rounded-xl shrink-0 border border-outline-variant/10"
-                            alt={item.menuItem.name}
-                            src={item.menuItem.image}
-                          />
-                          <div className="flex-1">
-                            <h3 className="font-bold text-sm md:text-base text-espresso-dark leading-snug">
-                              {item.menuItem.name}
-                            </h3>
-                            
-                            {/* Display Customizations if any */}
-                            {item.selectedOptions.length > 0 && (
-                              <p className="text-xs text-espresso-dark/60 mt-1 italic">
-                                + {item.selectedOptions.map((o) => o.name).join(", ")}
-                              </p>
-                            )}
-
-                            <p className="text-sm font-extrabold text-terracotta mt-1.5">
-                              {formatIDR(item.unitPrice * item.quantity)}
-                              <span className="text-xs font-normal text-espresso-dark/50 ml-1">
-                                ({formatIDR(item.unitPrice)} / porsi)
-                              </span>
-                            </p>
+                    <div className="flex flex-col gap-6">
+                      {/* Section 1: Menu Mingguan */}
+                      {weeklyCartItems.length > 0 && (
+                        <div className="bg-terracotta/5 border border-terracotta/20 rounded-2xl p-4">
+                          <div className="flex items-center justify-between border-b border-terracotta/15 pb-2.5 mb-3">
+                            <div className="flex items-center gap-2 text-terracotta font-extrabold text-xs uppercase tracking-wider">
+                              <Calendar className="w-4 h-4 text-terracotta" />
+                              <span>📅 Menu Mingguan (Spesial Hari)</span>
+                            </div>
+                            <span className="text-[10px] bg-terracotta/10 text-terracotta font-bold px-2.5 py-0.5 rounded-full">
+                              {weeklyCartItems.length} Hidangan
+                            </span>
                           </div>
 
-                          {/* Stepper Quantities */}
-                          <div className="flex items-center gap-2.5 bg-soft-cream rounded-full px-2 py-1 border border-outline-variant/20 shrink-0">
-                            <motion.button
-                              whileHover={{ scale: 1.2 }}
-                              whileTap={{ scale: 0.8 }}
-                              onClick={() => handleUpdateCartQuantity(item.id, -1)}
-                              className="text-espresso-dark/70 hover:text-terracotta p-1 transition-colors cursor-pointer"
-                              aria-label="Kurangi porsi"
-                            >
-                              <Minus className="w-4 h-4" />
-                            </motion.button>
-                            <span className="font-bold text-sm w-4 text-center select-none">
-                              {item.quantity}
-                            </span>
-                            <motion.button
-                              whileHover={{ scale: 1.2 }}
-                              whileTap={{ scale: 0.8 }}
-                              onClick={() => handleUpdateCartQuantity(item.id, 1)}
-                              className="text-espresso-dark/75 hover:text-terracotta p-1 transition-colors cursor-pointer"
-                              aria-label="Tambah porsi"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </motion.button>
+                          <div className="flex flex-col gap-4 divide-y divide-outline-variant/15">
+                            {weeklyCartItems.map((item) => (
+                              <div key={item.id} className="flex gap-4 pt-3 first:pt-0 items-start">
+                                <img
+                                  className="w-16 h-16 object-cover rounded-xl shrink-0 border border-outline-variant/10"
+                                  alt={item.menuItem.name}
+                                  src={item.menuItem.image}
+                                />
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="font-bold text-sm md:text-base text-espresso-dark leading-snug">
+                                      {item.menuItem.name}
+                                    </h3>
+                                    {item.menuItem.dayName && (
+                                      <span className="text-[10px] font-extrabold bg-terracotta text-white px-2 py-0.5 rounded-md shadow-2xs">
+                                        Hari {item.menuItem.dayName}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {item.selectedOptions.length > 0 && (
+                                    <p className="text-xs text-espresso-dark/60 mt-1 italic">
+                                      + {item.selectedOptions.map((o) => o.name).join(", ")}
+                                    </p>
+                                  )}
+
+                                  <p className="text-sm font-extrabold text-terracotta mt-1.5">
+                                    {formatIDR(item.unitPrice * item.quantity)}
+                                    <span className="text-xs font-normal text-espresso-dark/50 ml-1">
+                                      ({formatIDR(item.unitPrice)} / porsi)
+                                    </span>
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-2.5 bg-white rounded-full px-2 py-1 border border-outline-variant/20 shrink-0">
+                                  <motion.button
+                                    whileHover={{ scale: 1.2 }}
+                                    whileTap={{ scale: 0.8 }}
+                                    onClick={() => handleUpdateCartQuantity(item.id, -1)}
+                                    className="text-espresso-dark/70 hover:text-terracotta p-1 transition-colors cursor-pointer"
+                                    aria-label="Kurangi porsi"
+                                  >
+                                    <Minus className="w-4 h-4" />
+                                  </motion.button>
+                                  <span className="font-bold text-sm w-4 text-center select-none">
+                                    {item.quantity}
+                                  </span>
+                                  <motion.button
+                                    whileHover={{ scale: 1.2 }}
+                                    whileTap={{ scale: 0.8 }}
+                                    onClick={() => handleUpdateCartQuantity(item.id, 1)}
+                                    className="text-espresso-dark/75 hover:text-terracotta p-1 transition-colors cursor-pointer"
+                                    aria-label="Tambah porsi"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </motion.button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      )}
+
+                      {/* Section 2: Menu Reguler & Lainnya */}
+                      {nonWeeklyCartItems.length > 0 && (
+                        <div className="bg-espresso-dark/5 border border-outline-variant/20 rounded-2xl p-4">
+                          <div className="flex items-center justify-between border-b border-outline-variant/15 pb-2.5 mb-3">
+                            <div className="flex items-center gap-2 text-espresso-dark font-extrabold text-xs uppercase tracking-wider">
+                              <UtensilsCrossed className="w-4 h-4 text-terracotta" />
+                              <span>🍲 Menu Reguler & Lainnya</span>
+                            </div>
+                            <span className="text-[10px] bg-espresso-dark/10 text-espresso-dark font-bold px-2.5 py-0.5 rounded-full">
+                              {nonWeeklyCartItems.length} Hidangan
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col gap-4 divide-y divide-outline-variant/15">
+                            {nonWeeklyCartItems.map((item) => (
+                              <div key={item.id} className="flex gap-4 pt-3 first:pt-0 items-start">
+                                <img
+                                  className="w-16 h-16 object-cover rounded-xl shrink-0 border border-outline-variant/10"
+                                  alt={item.menuItem.name}
+                                  src={item.menuItem.image}
+                                />
+                                <div className="flex-1">
+                                  <h3 className="font-bold text-sm md:text-base text-espresso-dark leading-snug">
+                                    {item.menuItem.name}
+                                  </h3>
+
+                                  {item.selectedOptions.length > 0 && (
+                                    <p className="text-xs text-espresso-dark/60 mt-1 italic">
+                                      + {item.selectedOptions.map((o) => o.name).join(", ")}
+                                    </p>
+                                  )}
+
+                                  <p className="text-sm font-extrabold text-terracotta mt-1.5">
+                                    {formatIDR(item.unitPrice * item.quantity)}
+                                    <span className="text-xs font-normal text-espresso-dark/50 ml-1">
+                                      ({formatIDR(item.unitPrice)} / porsi)
+                                    </span>
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-2.5 bg-white rounded-full px-2 py-1 border border-outline-variant/20 shrink-0">
+                                  <motion.button
+                                    whileHover={{ scale: 1.2 }}
+                                    whileTap={{ scale: 0.8 }}
+                                    onClick={() => handleUpdateCartQuantity(item.id, -1)}
+                                    className="text-espresso-dark/70 hover:text-terracotta p-1 transition-colors cursor-pointer"
+                                    aria-label="Kurangi porsi"
+                                  >
+                                    <Minus className="w-4 h-4" />
+                                  </motion.button>
+                                  <span className="font-bold text-sm w-4 text-center select-none">
+                                    {item.quantity}
+                                  </span>
+                                  <motion.button
+                                    whileHover={{ scale: 1.2 }}
+                                    whileTap={{ scale: 0.8 }}
+                                    onClick={() => handleUpdateCartQuantity(item.id, 1)}
+                                    className="text-espresso-dark/75 hover:text-terracotta p-1 transition-colors cursor-pointer"
+                                    aria-label="Tambah porsi"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </motion.button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Calculating Totals block */}
@@ -1765,17 +2058,36 @@ Mohon diproses ya min, terima kasih!`;
                         <span>Subtotal Hidangan</span>
                         <span>{formatIDR(totalPrice)}</span>
                       </div>
-                      <div className="flex justify-between items-center text-sm mb-3 text-espresso-dark/70">
+
+                      <div className="flex justify-between items-center text-sm mb-2 text-espresso-dark/70">
                         <div className="flex items-center gap-1.5">
-                          <span>Ongkos Kirim (Flat)</span>
-                          <span className="text-[10px] font-bold text-wasabi-green bg-wasabi-green/10 px-2 py-0.5 rounded-md uppercase">
-                            Flat Rate
+                          <span>Ongkos Kirim</span>
+                          <span className="text-[10px] font-bold text-terracotta bg-terracotta/10 px-2 py-0.5 rounded-md uppercase">
+                            {deliveryTripsData.tripsCount}x Pengiriman
                           </span>
                         </div>
                         <span className="font-semibold text-espresso-dark">
-                          {formatIDR(SHIPPING_FEE)}
+                          {formatIDR(deliveryTripsData.totalShippingFee)}
                         </span>
                       </div>
+
+                      {/* Dynamic Shipping Notice */}
+                      {deliveryTripsData.isSameDayMerged ? (
+                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-900 mb-3 flex items-start gap-2">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <div>
+                            <strong>🎉 Hemat 1x Ongkir!</strong> Menu Mingguan & Menu Reguler dikirim bersamaan pada hari <strong>{deliveryTripsData.uniqueDaysList.join(", ")}</strong>.
+                          </div>
+                        </div>
+                      ) : deliveryTripsData.tripsCount > 1 ? (
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-950 mb-3 flex items-start gap-2">
+                          <Truck className="w-4 h-4 text-terracotta shrink-0 mt-0.5" />
+                          <div>
+                            <strong>🚚 {deliveryTripsData.tripsCount}x Pengiriman Terpisah:</strong> Dikirim di hari <strong>{deliveryTripsData.uniqueDaysList.join(" & ")}</strong> ({formatIDR(SHIPPING_FEE)} per pengiriman).
+                          </div>
+                        </div>
+                      ) : null}
+
                       <div className="flex justify-between items-center pt-3 border-t border-outline-variant/20 font-extrabold text-base md:text-lg text-espresso-dark">
                         <span>Total Pembayaran</span>
                         <span className="text-terracotta">{formatIDR(grandTotal)}</span>
@@ -1833,78 +2145,103 @@ Mohon diproses ya min, terima kasih!`;
                         />
                       </div>
 
-                      {/* Delivery Date Selection (Open PO H-1) */}
-                      <div className="bg-terracotta/5 border border-terracotta/20 rounded-2xl p-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Calendar className="w-4 h-4 text-terracotta" />
-                          <label className="text-xs font-bold text-espresso-dark uppercase tracking-wider">
-                            Tanggal Pengiriman (Pre-Order) <span className="text-terracotta">*</span>
-                          </label>
-                        </div>
-
-                        {/* Cutoff Status Notice Banner */}
-                        <div className={`p-3 rounded-xl mb-3 text-xs leading-relaxed flex items-start gap-2 ${
-                          deliveryDateData.isPastCutoff 
-                            ? "bg-amber-500/10 text-amber-900 border border-amber-500/20"
-                            : "bg-wasabi-green/15 text-muted-herb border border-wasabi-green/30"
-                        }`}>
-                          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-terracotta" />
-                          <div>
-                            {deliveryDateData.isPastCutoff ? (
-                              <span>
-                                <strong>🌙 Lewat Jam 20.00 WIB:</strong> Pesanan setelah jam 8 malam tidak bisa dikirim besok. Pengiriman tercepat adalah <strong>Besok Lusa ({deliveryDateData.earliestDate})</strong>.
-                              </span>
-                            ) : (
-                              <span>
-                                <strong>⏰ Open PO H-1 (Cut-off Jam 20.00 WIB):</strong> Pesan sebelum jam 20.00 WIB untuk dikirim <strong>Besok ({deliveryDateData.earliestDate})</strong>.
-                              </span>
-                            )}
+                      {/* Delivery Date Selection Section */}
+                      {!hasNonWeeklyItems && hasWeeklyItems ? (
+                        <div className="bg-terracotta/5 border border-terracotta/20 rounded-2xl p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Calendar className="w-4 h-4 text-terracotta" />
+                            <label className="text-xs font-bold text-espresso-dark uppercase tracking-wider">
+                              Jadwal Pengiriman Menu Mingguan
+                            </label>
+                          </div>
+                          <div className="p-3.5 bg-white rounded-xl border border-terracotta/30 text-xs text-espresso-dark/85 leading-relaxed space-y-1.5 shadow-2xs">
+                            <div className="flex items-center gap-2 font-extrabold text-terracotta text-sm">
+                              <Clock className="w-4 h-4 text-terracotta shrink-0" />
+                              <span>Dikirim Otomatis Sesuai Hari Menu</span>
+                            </div>
+                            <p>
+                              Pesanan <strong>Menu Mingguan</strong> tidak memerlukan opsi tanggal pengiriman tambahan. Hidangan akan otomatis dikirimkan langsung pada hari sesuai jadwal menu yang Anda pilih.
+                            </p>
                           </div>
                         </div>
+                      ) : (
+                        <div className="bg-terracotta/5 border border-terracotta/20 rounded-2xl p-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Calendar className="w-4 h-4 text-terracotta" />
+                            <label className="text-xs font-bold text-espresso-dark uppercase tracking-wider">
+                              Tanggal Pengiriman (Pre-Order) <span className="text-terracotta">*</span>
+                            </label>
+                          </div>
 
-                        {/* Date selection grid cards */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1 hide-scrollbar">
-                          {deliveryDateData.options.map((option) => {
-                            const isSelected = customerDetails.deliveryDate === option.fullFormatted;
-                            return (
-                              <motion.button
-                                key={option.fullFormatted}
-                                type="button"
-                                whileHover={{ scale: 1.04 }}
-                                whileTap={{ scale: 0.96 }}
-                                onClick={() => setCustomerDetails({ ...customerDetails, deliveryDate: option.fullFormatted })}
-                                className={`p-2.5 rounded-xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between relative ${
-                                  isSelected
-                                    ? "bg-terracotta text-soft-cream border-terracotta shadow-xs font-bold"
-                                    : "bg-white text-espresso-dark border-outline-variant/30 hover:border-terracotta/50 hover:bg-terracotta/5"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between w-full">
-                                  <span className={`text-[11px] ${isSelected ? "text-soft-cream/90" : "text-espresso-dark/60 font-medium"}`}>
-                                    {option.dayName}
-                                  </span>
-                                  {isSelected && <Check className="w-3.5 h-3.5 text-soft-cream shrink-0" />}
-                                </div>
-                                <span className="text-xs font-extrabold mt-0.5">
-                                  {option.dateFormatted}
+                          {/* Cutoff Status Notice Banner */}
+                          <div className={`p-3 rounded-xl mb-3 text-xs leading-relaxed flex items-start gap-2 ${
+                            deliveryDateData.isPastCutoff 
+                              ? "bg-amber-500/10 text-amber-900 border border-amber-500/20"
+                              : "bg-wasabi-green/15 text-muted-herb border border-wasabi-green/30"
+                          }`}>
+                            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-terracotta" />
+                            <div>
+                              {deliveryDateData.isPastCutoff ? (
+                                <span>
+                                  <strong>🌙 Lewat Jam 20.00 WIB:</strong> Pesanan setelah jam 8 malam tidak bisa dikirim besok. Pengiriman tercepat adalah <strong>Besok Lusa ({deliveryDateData.earliestDate})</strong>.
                                 </span>
-                                {option.tag && (
-                                  <span className={`mt-1 text-[10px] px-1.5 py-0.5 rounded-md font-bold text-center inline-block ${
+                              ) : (
+                                <span>
+                                  <strong>⏰ Open PO H-1 (Cut-off Jam 20.00 WIB):</strong> Pesan sebelum jam 20.00 WIB untuk dikirim <strong>Besok ({deliveryDateData.earliestDate})</strong>.
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Date selection grid cards */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1 hide-scrollbar">
+                            {deliveryDateData.options.map((option) => {
+                              const isSelected = customerDetails.deliveryDate === option.fullFormatted;
+                              return (
+                                <motion.button
+                                  key={option.fullFormatted}
+                                  type="button"
+                                  whileHover={{ scale: 1.04 }}
+                                  whileTap={{ scale: 0.96 }}
+                                  onClick={() => setCustomerDetails({ ...customerDetails, deliveryDate: option.fullFormatted })}
+                                  className={`p-2.5 rounded-xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between relative ${
                                     isSelected
-                                      ? "bg-white/20 text-soft-cream"
-                                      : "bg-terracotta/10 text-terracotta"
-                                  }`}>
-                                    {option.tag}
+                                      ? "bg-terracotta text-soft-cream border-terracotta shadow-xs font-bold"
+                                      : "bg-white text-espresso-dark border-outline-variant/30 hover:border-terracotta/50 hover:bg-terracotta/5"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between w-full">
+                                    <span className={`text-[11px] ${isSelected ? "text-soft-cream/90" : "text-espresso-dark/60 font-medium"}`}>
+                                      {option.dayName}
+                                    </span>
+                                    {isSelected && <Check className="w-3.5 h-3.5 text-soft-cream shrink-0" />}
+                                  </div>
+                                  <span className="text-xs font-extrabold mt-0.5">
+                                    {option.dateFormatted}
                                   </span>
-                                )}
-                              </motion.button>
-                            );
-                          })}
+                                  {option.tag && (
+                                    <span className={`mt-1 text-[10px] px-1.5 py-0.5 rounded-md font-bold text-center inline-block ${
+                                      isSelected
+                                        ? "bg-white/20 text-soft-cream"
+                                        : "bg-terracotta/10 text-terracotta"
+                                    }`}>
+                                      {option.tag}
+                                    </span>
+                                  )}
+                                </motion.button>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[11px] text-espresso-dark/70 mt-2 font-medium">
+                            Dipilih: <strong className="text-terracotta">{customerDetails.deliveryDate || "Belum dipilih"}</strong>
+                          </p>
+                          {hasWeeklyItems && (
+                            <div className="mt-2.5 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-950 leading-snug">
+                              <strong>ℹ️ Catatan:</strong> Tanggal pengiriman di atas berlaku untuk menu reguler/frozen. Item Menu Mingguan dalam keranjang Anda tetap akan dikirimkan sesuai hari jadwal menu masing-masing.
+                            </div>
+                          )}
                         </div>
-                        <p className="text-[11px] text-espresso-dark/70 mt-2 font-medium">
-                          Dipilih: <strong className="text-terracotta">{customerDetails.deliveryDate || "Belum dipilih"}</strong>
-                        </p>
-                      </div>
+                      )}
 
                       <div>
                         <label className="block text-xs font-bold text-espresso-dark uppercase tracking-wider mb-2" htmlFor="alamat">
@@ -2208,6 +2545,27 @@ Mohon diproses ya min, terima kasih!`;
                   </p>
                 </div>
 
+                {/* Weekly Menu H-1 20.00 Notice Banner inside Modal */}
+                {((selectedItem.category === "Menu Mingguan" || selectedItem.isWeekly) && selectedItem.dayNumber) && (() => {
+                  const avail = getWeeklyMenuAvailability(selectedItem.dayNumber);
+                  return (
+                    <div className={`p-3.5 rounded-2xl mb-5 text-xs flex items-start gap-2.5 border ${
+                      !avail.isOrderable
+                        ? "bg-red-50 text-red-900 border-red-200"
+                        : "bg-amber-50 text-amber-900 border-amber-200"
+                    }`}>
+                      {!avail.isOrderable ? (
+                        <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      )}
+                      <div>
+                        <strong>{avail.badgeLabel}:</strong> {avail.reason}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <p className="text-xs md:text-sm text-espresso-dark/70 leading-relaxed mb-6 border-b border-outline-variant/15 pb-4">
                   {selectedItem.desc}
                 </p>
@@ -2254,44 +2612,61 @@ Mohon diproses ya min, terima kasih!`;
                 </div>
 
                 {/* Bottom Row Quantity & CTA */}
-                <div className="pt-4 border-t border-outline-variant/20 mt-auto flex flex-col sm:flex-row gap-4 items-center">
-                  
-                  {/* Stepper block */}
-                  <div className="flex items-center justify-between w-32 h-[52px] bg-white rounded-full border border-outline-variant/20 px-2 shrink-0 shadow-xs">
-                    <motion.button
-                      whileHover={{ scale: 1.15 }}
-                      whileTap={{ scale: 0.85 }}
-                      onClick={() => setModalQuantity((prev) => Math.max(1, prev - 1))}
-                      className="w-10 h-10 flex items-center justify-center rounded-full text-espresso-dark/60 hover:bg-espresso-dark/5 transition-all cursor-pointer"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </motion.button>
-                    <span className="font-bold text-base text-espresso-dark select-none">
-                      {modalQuantity}
-                    </span>
-                    <motion.button
-                      whileHover={{ scale: 1.15 }}
-                      whileTap={{ scale: 0.85 }}
-                      onClick={() => setModalQuantity((prev) => prev + 1)}
-                      className="w-10 h-10 flex items-center justify-center rounded-full text-terracotta hover:bg-espresso-dark/5 transition-all cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </motion.button>
-                  </div>
+                {(() => {
+                  const isWeekly = (selectedItem.category === "Menu Mingguan" || selectedItem.isWeekly) && selectedItem.dayNumber;
+                  const avail = isWeekly ? getWeeklyMenuAvailability(selectedItem.dayNumber) : null;
+                  const isClosed = avail ? !avail.isOrderable : false;
 
-                  {/* Add to order trigger */}
-                  <motion.button
-                    whileHover={{ scale: 1.02, y: -2 }}
-                    whileTap={{ scale: 0.96 }}
-                    onClick={handleAddToCartFromModal}
-                    className="w-full sm:flex-1 h-[52px] bg-terracotta text-soft-cream font-bold rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <span>Tambah ke Pesanan</span>
-                    <span className="opacity-80 font-normal">
-                      • {formatIDR(currentModalUnitPrice * modalQuantity)}
-                    </span>
-                  </motion.button>
-                </div>
+                  return (
+                    <div className="pt-4 border-t border-outline-variant/20 mt-auto flex flex-col sm:flex-row gap-4 items-center">
+                      
+                      {/* Stepper block */}
+                      <div className="flex items-center justify-between w-32 h-[52px] bg-white rounded-full border border-outline-variant/20 px-2 shrink-0 shadow-xs">
+                        <motion.button
+                          whileHover={{ scale: 1.15 }}
+                          whileTap={{ scale: 0.85 }}
+                          onClick={() => setModalQuantity((prev) => Math.max(1, prev - 1))}
+                          disabled={isClosed}
+                          className="w-10 h-10 flex items-center justify-center rounded-full text-espresso-dark/60 hover:bg-espresso-dark/5 transition-all cursor-pointer disabled:opacity-40"
+                        >
+                          <Minus className="w-4 h-4" />
+                        </motion.button>
+                        <span className="font-bold text-base text-espresso-dark select-none">
+                          {modalQuantity}
+                        </span>
+                        <motion.button
+                          whileHover={{ scale: 1.15 }}
+                          whileTap={{ scale: 0.85 }}
+                          onClick={() => setModalQuantity((prev) => prev + 1)}
+                          disabled={isClosed}
+                          className="w-10 h-10 flex items-center justify-center rounded-full text-terracotta hover:bg-espresso-dark/5 transition-all cursor-pointer disabled:opacity-40"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </motion.button>
+                      </div>
+
+                      {/* Add to order trigger */}
+                      <motion.button
+                        whileHover={!isClosed ? { scale: 1.02, y: -2 } : {}}
+                        whileTap={!isClosed ? { scale: 0.96 } : {}}
+                        onClick={handleAddToCartFromModal}
+                        disabled={isClosed}
+                        className={`w-full sm:flex-1 h-[52px] font-bold rounded-full shadow-lg transition-all flex items-center justify-center gap-2 ${
+                          isClosed
+                            ? "bg-gray-300 text-gray-500 cursor-not-allowed shadow-none border border-gray-400/30"
+                            : "bg-terracotta text-soft-cream hover:shadow-xl cursor-pointer"
+                        }`}
+                      >
+                        <span>{isClosed ? avail?.buttonLabel || "Pemesanan Tutup" : "Tambah ke Pesanan"}</span>
+                        {!isClosed && (
+                          <span className="opacity-80 font-normal">
+                            • {formatIDR(currentModalUnitPrice * modalQuantity)}
+                          </span>
+                        )}
+                      </motion.button>
+                    </div>
+                  );
+                })()}
 
               </div>
             </motion.div>
