@@ -713,6 +713,87 @@ export default function App() {
     }
   };
 
+  // Manual WhatsApp Order Handler
+  const handleManualWhatsAppOrder = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+
+    const cleanName = String(customerDetails?.fullName || "").trim();
+    const cleanPhone = String(customerDetails?.phone || "").trim();
+    const cleanAddress = String(customerDetails?.deliveryAddress || "").trim();
+    const cleanDate = String(customerDetails?.deliveryDate || "").trim();
+    const cleanNotes = String(customerDetails?.notes || "").trim();
+
+    if (!cleanName) {
+      alert("Silakan masukkan nama lengkap Anda untuk pengiriman.");
+      return;
+    }
+    if (!cleanPhone) {
+      alert("Silakan masukkan nomor handphone / WhatsApp Anda.");
+      return;
+    }
+    if (!cleanAddress) {
+      alert("Silakan masukkan alamat lengkap pengiriman Anda.");
+      return;
+    }
+    if (!cleanDate) {
+      alert("Silakan pilih tanggal pengiriman pesanan Anda.");
+      return;
+    }
+
+    if (cart.length === 0) {
+      alert("Keranjang pesanan Anda masih kosong.");
+      return;
+    }
+
+    const itemsText = cart.map((c, i) => {
+      const opts = c.selectedOptions && c.selectedOptions.length > 0
+        ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})`
+        : "";
+      return `${i + 1}. *${c.quantity}x ${c.menuItem.name}*${opts} - ${formatIDR(c.unitPrice * c.quantity)}`;
+    }).join("\n");
+
+    const message = 
+`Halo MAM catering, saya mau pesan manual via WhatsApp:
+
+*DATA PEMESAN:*
+👤 Nama: ${cleanName}
+📱 No. HP/WA: ${cleanPhone}
+📅 Tanggal Pengiriman: ${cleanDate}
+📍 Alamat Pengiriman: ${cleanAddress}
+${cleanNotes ? `📝 Catatan: ${cleanNotes}\n` : ""}
+*RINCIAN PESANAN:*
+${itemsText}
+
+💵 Subtotal: ${formatIDR(totalPrice)}
+🚚 Ongkir (Flat): ${formatIDR(SHIPPING_FEE)}
+💰 *TOTAL: ${formatIDR(grandTotal)}*
+
+Mohon diproses ya min, terima kasih!`;
+
+    const encodedMsg = encodeURIComponent(message);
+    const waUrl = `https://wa.me/6282233009957?text=${encodedMsg}`;
+
+    // Record order in Supabase
+    const orderId = `ORDER-WA-${Date.now()}`;
+    recordSupabaseOrder({
+      orderId: orderId,
+      customerName: cleanName,
+      customerPhone: cleanPhone,
+      totalAmount: grandTotal,
+      status: "pending_wa",
+      items: cart.map((c) => ({
+        productId: c.menuItem.id,
+        quantity: c.quantity,
+        price: c.unitPrice,
+      })),
+    }).then(() => {
+      loadSupabaseProducts();
+    });
+
+    window.open(waUrl, "_blank");
+    setToastMessage("Membuka WhatsApp untuk pemesanan manual...");
+  };
+
   return (
     <div className="min-h-screen bg-soft-cream text-espresso-dark font-sans relative pb-16 md:pb-0 overflow-x-hidden">
       
@@ -1022,7 +1103,7 @@ export default function App() {
               {/* Horizontal Slider Carousel for Home Page */}
               <div 
                 ref={homeMenuScrollRef}
-                className="flex gap-6 overflow-x-auto snap-x snap-proximity pb-8 pt-3 px-1 hide-scrollbar smooth-scroll-x touch-pan-x transform-gpu"
+                className="flex gap-6 overflow-x-auto snap-x snap-proximity pb-8 pt-3 px-1 hide-scrollbar smooth-scroll-x touch-pan-x touch-pan-y transform-gpu"
               >
                 {menuItems.map((item, index) => {
                   const itemStock = item.stock ?? 50;
@@ -1477,7 +1558,7 @@ export default function App() {
             {/* Horizontal Slide Carousel Menu Catalog */}
             <div 
               ref={menuScrollRef}
-              className="flex gap-6 overflow-x-auto snap-x snap-proximity pb-8 pt-2 hide-scrollbar smooth-scroll-x touch-pan-x transform-gpu"
+              className="flex gap-6 overflow-x-auto snap-x snap-proximity pb-8 pt-2 hide-scrollbar smooth-scroll-x touch-pan-x touch-pan-y transform-gpu"
             >
               {filteredMenu.map((item) => {
                 const itemStock = item.stock ?? 50;
@@ -1872,6 +1953,27 @@ export default function App() {
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                           <span>Mendukung QRIS, BCA/Mandiri/BRI VA, GoPay, ShopeePay & Kartu</span>
                         </div>
+
+                        {/* Divider */}
+                        <div className="relative my-3 flex items-center justify-center">
+                          <div className="border-t border-outline-variant/30 w-full" />
+                          <span className="bg-white px-3 text-xs text-espresso-dark/50 font-medium shrink-0 uppercase tracking-wider">
+                            atau
+                          </span>
+                          <div className="border-t border-outline-variant/30 w-full" />
+                        </div>
+
+                        {/* Pesan Manual via WhatsApp */}
+                        <motion.button
+                          type="button"
+                          onClick={handleManualWhatsAppOrder}
+                          whileHover={{ scale: 1.02, y: -2 }}
+                          whileTap={{ scale: 0.96 }}
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer text-sm border border-emerald-500/30"
+                        >
+                          <MessageCircle className="w-5 h-5 text-white shrink-0" />
+                          <span>Pesan Manual via WhatsApp</span>
+                        </motion.button>
                       </div>
                     </form>
                   </div>
