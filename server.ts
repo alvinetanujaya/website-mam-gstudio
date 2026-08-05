@@ -354,7 +354,16 @@ app.post("/api/admin/clean-weekly-products", async (req: express.Request, res: e
       return res.status(500).json({ error: "Supabase client not configured on server" });
     }
 
-    console.log("[Supabase Server] Deleting weekly menu items (ID 101-107, category Menu Mingguan)...");
+    console.log("[Supabase Server] Unlinking & deleting weekly menu items (ID 101-107)...");
+    // 1. Unlink foreign keys in order_items table to avoid FK constraint error
+    try {
+      await supabase.from("order_items").update({ product_id: null }).in("product_id", [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
+      await supabase.from("order_items").delete().in("product_id", [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
+    } catch (fkErr) {
+      console.warn("Notice unlinking order_items FK:", fkErr);
+    }
+
+    // 2. Delete products from products table
     await supabase.from("products").delete().in("id", [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
     await supabase.from("products").delete().eq("category", "Menu Mingguan");
     await supabase.from("products").delete().ilike("name", "[%");

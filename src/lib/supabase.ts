@@ -123,6 +123,8 @@ export async function seedProductsToSupabase(itemsToSeed: MenuItem[] = MENU_ITEM
     // 2. Clean up / delete any old "Menu Mingguan" rows or weekly IDs from Supabase products table
     try {
       await fetch('/api/admin/clean-weekly-products', { method: 'POST' }).catch(() => {});
+      await supabase.from('order_items').update({ product_id: null }).in('product_id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]).catch(() => {});
+      await supabase.from('order_items').delete().in('product_id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]).catch(() => {});
       await supabase.from('products').delete().in('id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
       await supabase.from('products').delete().eq('category', 'Menu Mingguan');
       await supabase.from('products').delete().ilike('name', '[%');

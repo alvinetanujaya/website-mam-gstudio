@@ -33,6 +33,7 @@ import {
   PieChart,
   Clock,
   ChevronDown,
+  Trash2,
   ChevronUp,
   Receipt,
   Pencil
@@ -312,12 +313,15 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
     setSeedMessage(null);
     try {
       if (supabase) {
+        // Unlink/Delete order_items FK constraint first
+        await supabase.from('order_items').update({ product_id: null }).in('product_id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]).catch(() => {});
+        await supabase.from('order_items').delete().in('product_id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]).catch(() => {});
         await supabase.from('products').delete().in('id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
         await supabase.from('products').delete().eq('category', 'Menu Mingguan');
         await supabase.from('products').delete().gte('id', 100).lte('id', 200);
       }
       await fetch('/api/admin/clean-weekly-products', { method: 'POST' }).catch(() => {});
-      setSeedMessage("✅ Item Menu Mingguan (ID 101-107) berhasil dibersihkan dari Supabase!");
+      setSeedMessage("✅ Item Menu Mingguan (ID 101-107) & relasi order berhasil dibersihkan dari Supabase!");
     } catch (err: any) {
       setSeedMessage("Gagal menghapus: " + (err?.message || String(err)));
     } finally {
