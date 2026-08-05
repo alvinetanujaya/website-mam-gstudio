@@ -113,7 +113,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newPinInput, setNewPinInput] = useState<string>("");
 
   const sqlSchema = `-- ==========================================
--- SKRIP RESET & SEED LENGKAP SUPABASE (14 MENU)
+-- SKRIP RESET & SEED LENGKAP SUPABASE (14 MENU UTAMA & FROZEN FOOD)
+-- Catatan: Menu Mingguan berbasis PO tanpa batas stok (tidak dicatat di Supabase)
 -- ==========================================
 
 -- 1. Buat / Pastikan Tabel 'products' Memiliki Kolom 'category'
@@ -130,7 +131,7 @@ CREATE TABLE IF NOT EXISTS products (
 ALTER TABLE products ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Makanan Utama';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT;
 
--- 2. Bersihkan Data Lama Agar Tidak Terjadi Duplikasi Baris
+-- 2. Bersihkan Data Lama & Hapus Menu Mingguan dari Supabase
 TRUNCATE TABLE products RESTART IDENTITY CASCADE;
 
 -- 3. Insert 14 Menu Autentik Aplikasi (7 Makanan Utama & 7 Frozen Food)

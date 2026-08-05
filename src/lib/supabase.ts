@@ -93,14 +93,17 @@ export function subscribeToProducts(onUpdate: () => void) {
   }
 }
 
-// Seed initial default products into Supabase if empty
+// Seed initial default products into Supabase (excluding Menu Mingguan which doesn't require stock tracking)
 export async function seedProductsToSupabase(itemsToSeed: MenuItem[] = MENU_ITEMS): Promise<{ success: boolean; message: string }> {
   if (!supabase) {
     return { success: false, message: 'Supabase belum terhubung. Konfigurasi VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY di .env.' };
   }
 
   try {
-    const payload = itemsToSeed.map((item) => ({
+    // 1. Filter out Menu Mingguan items (weekly items have unlimited stock pre-orders and are not stored in Supabase stock table)
+    const nonWeeklyItems = itemsToSeed.filter((item) => item.category !== "Menu Mingguan" && !item.isWeekly);
+
+    const payload = nonWeeklyItems.map((item) => ({
       id: item.id,
       name: item.name,
       category: item.category || "Makanan Utama",
@@ -109,6 +112,16 @@ export async function seedProductsToSupabase(itemsToSeed: MenuItem[] = MENU_ITEM
       image: item.image
     }));
 
+    // 2. Clean up / delete any old "Menu Mingguan" rows or weekly IDs from Supabase products table
+    try {
+      await supabase.from('products').delete().eq('category', 'Menu Mingguan');
+      await supabase.from('products').delete().ilike('name', '[%');
+      await supabase.from('products').delete().gte('id', 100).lte('id', 200);
+    } catch (cleanupErr) {
+      console.warn('Notice during weekly items cleanup:', cleanupErr);
+    }
+
+    // 3. Upsert standard products (Makanan Utama & Frozen Food)
     const { data, error } = await supabase
       .from('products')
       .upsert(payload, { onConflict: 'id' })
@@ -119,7 +132,10 @@ export async function seedProductsToSupabase(itemsToSeed: MenuItem[] = MENU_ITEM
       return { success: false, message: `Gagal seeding: ${formatSupabaseErrorMessage(error)}` };
     }
 
-    return { success: true, message: `Berhasil menambahkan ${data?.length || 0} produk ke tabel Supabase!` };
+    return { 
+      success: true, 
+      message: `✅ Berhasil menyelaraskan ${data?.length || 0} produk (Makanan Utama & Frozen Food) ke Supabase! Menu Mingguan telah dibersihkan & tidak dicatat di tabel stok Supabase.` 
+    };
   } catch (err: any) {
     return { success: false, message: formatSupabaseErrorMessage(err) };
   }
