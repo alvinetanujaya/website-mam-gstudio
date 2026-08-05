@@ -307,6 +307,25 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
     onRefreshMenu();
   };
 
+  const handleCleanWeeklyProducts = async () => {
+    setIsSeeding(true);
+    setSeedMessage(null);
+    try {
+      if (supabase) {
+        await supabase.from('products').delete().in('id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
+        await supabase.from('products').delete().eq('category', 'Menu Mingguan');
+        await supabase.from('products').delete().gte('id', 100).lte('id', 200);
+      }
+      await fetch('/api/admin/clean-weekly-products', { method: 'POST' }).catch(() => {});
+      setSeedMessage("✅ Item Menu Mingguan (ID 101-107) berhasil dibersihkan dari Supabase!");
+    } catch (err: any) {
+      setSeedMessage("Gagal menghapus: " + (err?.message || String(err)));
+    } finally {
+      setIsSeeding(false);
+      onRefreshMenu();
+    }
+  };
+
   const handleStockChange = async (item: MenuItem, delta: number) => {
     const currentStock = item.stock ?? 50;
     const newStock = Math.max(0, currentStock + delta);
@@ -1107,7 +1126,7 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                         Sinkronkan 14 Produk Utama (Makanan Utama & Frozen Food) & hapus Menu Mingguan (ID 101-107) dari Supabase.
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         onClick={handleSeed}
                         disabled={isSeeding}
@@ -1115,6 +1134,15 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isSeeding ? "animate-spin" : ""}`} />
                         {isSeeding ? "Memproses..." : "Sync / Seed ke Supabase"}
+                      </button>
+                      <button
+                        onClick={handleCleanWeeklyProducts}
+                        disabled={isSeeding}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-600 text-white font-semibold text-xs hover:bg-red-700 disabled:opacity-50 transition-all shadow-sm shrink-0 cursor-pointer"
+                        title="Hapus baris [Senin]-[Minggu] ID 101-107 dari Supabase"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus Menu Mingguan di Supabase</span>
                       </button>
                     </div>
                   </div>
