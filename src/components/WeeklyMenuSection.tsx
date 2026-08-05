@@ -18,7 +18,17 @@ export interface WeeklyMenuAvailability {
   buttonLabel: string;
 }
 
-export const getWeeklyMenuAvailability = (dayNumber?: number): WeeklyMenuAvailability => {
+export const getWeeklyMenuAvailability = (dayNumber?: number, weekOffset: number = 0): WeeklyMenuAvailability => {
+  if (weekOffset === 1) {
+    return {
+      isOrderable: false,
+      status: 'future_open',
+      reason: 'Menu minggu depan belum dirilis (Coming Soon).',
+      badgeLabel: 'Coming Soon',
+      buttonLabel: 'Coming Soon',
+    };
+  }
+
   if (!dayNumber) {
     return {
       isOrderable: true,
@@ -88,6 +98,21 @@ export const getCurrentIndonesianDayNumber = (): number => {
   return day === 0 ? 7 : day; // 1 = Senin, 2 = Selasa, 3 = Rabu, 4 = Kamis, 5 = Jumat, 6 = Sabtu, 7 = Minggu
 };
 
+export const getDateForIndonesianDayNumber = (dayNumber: number, weekOffset: number = 0): Date => {
+  const now = new Date();
+  const day = now.getDay();
+  const todayNumber = day === 0 ? 7 : day; // 1 = Senin, 2 = Selasa, ..., 7 = Minggu
+  const diff = dayNumber - todayNumber + (weekOffset * 7);
+  const targetDate = new Date(now);
+  targetDate.setDate(now.getDate() + diff);
+  return targetDate;
+};
+
+export const formatDateIndoShort = (date: Date): string => {
+  const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
+  return `${date.getDate()} ${months[date.getMonth()]}`;
+};
+
 export const INDONESIAN_DAYS = [
   { dayNumber: 1, name: "Senin", title: "Senin Ceria" },
   { dayNumber: 2, name: "Selasa", title: "Selasa Semangat" },
@@ -104,64 +129,141 @@ export const WeeklyMenuSection: React.FC<WeeklyMenuSectionProps> = ({
   onOpenDetail,
   formatIDR,
 }) => {
+  const [weekOffset, setWeekOffset] = React.useState<number>(0);
   const todayNumber = getCurrentIndonesianDayNumber();
+
+  // Date range for selected week (Senin - Minggu)
+  const mondayDate = getDateForIndonesianDayNumber(1, weekOffset);
+  const sundayDate = getDateForIndonesianDayNumber(7, weekOffset);
+  const weekDateRangeStr = `${formatDateIndoShort(mondayDate)} - ${formatDateIndoShort(sundayDate)} ${sundayDate.getFullYear()}`;
 
   // Filter weekly items or match by day
   const weeklyItemsMap = INDONESIAN_DAYS.map((day) => {
     const matchedItem = menuItems.find(
       (m) =>
         (m.category === "Menu Mingguan" || m.isWeekly) &&
+        (weekOffset === 1 ? (m.isNextWeek === true || m.weekOffset === 1) : (!m.isNextWeek && m.weekOffset !== 1)) &&
         (m.dayNumber === day.dayNumber ||
           m.dayName?.toLowerCase() === day.name.toLowerCase() ||
           m.name.toLowerCase().includes(`[${day.name.toLowerCase()}]`) ||
           m.name.toLowerCase().includes(day.name.toLowerCase()))
     );
 
-    const availability = getWeeklyMenuAvailability(day.dayNumber);
+    const availability = getWeeklyMenuAvailability(day.dayNumber, weekOffset);
+    const dateObj = getDateForIndonesianDayNumber(day.dayNumber, weekOffset);
+    const dateStr = formatDateIndoShort(dateObj);
 
     return {
       dayInfo: day,
       item: matchedItem,
       availability,
+      dateObj,
+      dateStr,
     };
   });
 
   const todayName = INDONESIAN_DAYS.find((d) => d.dayNumber === todayNumber)?.name || "Hari Ini";
+  const todayDateStr = formatDateIndoShort(getDateForIndonesianDayNumber(todayNumber));
 
   return (
     <div className="w-full my-6 bg-surface-container-lowest rounded-3xl p-6 md:p-8 border border-outline-variant/20 shadow-sm">
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 pb-6 border-b border-outline-variant/20">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-6 border-b border-outline-variant/20">
         <div>
-          <div className="inline-flex items-center gap-2 bg-terracotta/10 text-terracotta px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider mb-2">
+          <div className="inline-flex items-center gap-2 bg-terracotta/10 text-terracotta px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider mb-2">
             <Calendar className="w-3.5 h-3.5" />
-            <span>Menu Mingguan (1 Menu Per Hari)</span>
+            <span>{weekOffset === 0 ? "Minggu Ini" : "Minggu Depan"} &bull; {weekDateRangeStr}</span>
           </div>
           <h2 className="text-2xl md:text-3xl font-extrabold text-espresso-dark tracking-tight">
             Jadwal Menu Spesial Seminggu
           </h2>
           <p className="text-sm text-espresso-dark/70 mt-1">
-            Hari ini: <strong className="text-terracotta font-bold">{todayName}</strong>. Pemesanan menu wajib dilakukan <strong className="text-terracotta">H-1 maksimal pukul 20.00 WIB</strong>. Lewat jam 20.00 WIB, order untuk esok hari sudah ditutup.
+            Hari ini: <strong className="text-terracotta font-bold">{todayName}, {todayDateStr}</strong>. Pemesanan menu wajib dilakukan <strong className="text-terracotta">H-1 maksimal pukul 20.00 WIB</strong>. Lewat jam 20.00 WIB, order untuk esok hari sudah ditutup.
           </p>
         </div>
 
-        <div className="bg-emerald-50 border border-emerald-200 px-4 py-2.5 rounded-2xl flex items-center gap-2 text-xs font-semibold text-emerald-800 shrink-0 shadow-xs">
-          <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Bebas Stok &mdash; Pesan Berapa Pun Banyaknya!</span>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Week Toggle Selector */}
+          <div className="bg-espresso-dark/5 p-1 rounded-2xl flex items-center border border-outline-variant/20 shrink-0">
+            <button
+              onClick={() => setWeekOffset(0)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                weekOffset === 0
+                  ? "bg-terracotta text-white shadow-xs"
+                  : "text-espresso-dark/70 hover:text-espresso-dark"
+              }`}
+            >
+              📅 Minggu Ini
+            </button>
+            <button
+              onClick={() => setWeekOffset(1)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                weekOffset === 1
+                  ? "bg-terracotta text-white shadow-xs"
+                  : "text-espresso-dark/70 hover:text-espresso-dark"
+              }`}
+            >
+              🚀 Minggu Depan
+            </button>
+          </div>
+
+          <div className="bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-2xl flex items-center gap-2 text-xs font-semibold text-emerald-800 shrink-0 shadow-xs">
+            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Bebas Stok &mdash; Pesan Berapa Pun Banyaknya!</span>
+          </div>
         </div>
       </div>
 
       {/* 7 Days Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {weeklyItemsMap.map(({ dayInfo, item, availability }) => {
+        {weeklyItemsMap.map(({ dayInfo, item, availability, dateStr }) => {
+          if (weekOffset === 1 && (!item || !item.weekOffset)) {
+            return (
+              <div
+                key={dayInfo.dayNumber}
+                className="bg-white/70 rounded-3xl p-5 border border-dashed border-terracotta/30 flex flex-col justify-between items-center text-center h-full min-h-[280px] relative overflow-hidden group hover:border-terracotta/50 transition-all shadow-xs"
+              >
+                <div className="w-full text-left font-bold text-xs uppercase tracking-wider flex items-center justify-between pb-3 border-b border-outline-variant/15 text-espresso-dark">
+                  <span className="flex items-center gap-1.5 text-terracotta font-extrabold">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>{dayInfo.name}</span>
+                  </span>
+                  <span className="text-[11px] font-semibold text-espresso-dark/50">{dateStr}</span>
+                </div>
+
+                <div className="my-auto py-4 flex flex-col items-center gap-2">
+                  <div className="w-12 h-12 rounded-2xl bg-terracotta/10 text-terracotta flex items-center justify-center font-bold shadow-xs">
+                    <Sparkles className="w-6 h-6 text-terracotta animate-pulse" />
+                  </div>
+                  <span className="text-[11px] font-extrabold uppercase tracking-widest text-terracotta bg-terracotta/10 px-3 py-1 rounded-full">
+                    Coming Soon
+                  </span>
+                  <p className="text-xs text-espresso-dark/60 max-w-[200px] leading-relaxed mt-1">
+                    Menu minggu depan untuk hari <strong>{dayInfo.name}</strong> belum rilis. Nantikan pembukaan pre-ordernya!
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled
+                  className="w-full bg-espresso-dark/5 text-espresso-dark/40 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed border border-outline-variant/20"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Coming Soon</span>
+                </button>
+              </div>
+            );
+          }
+
           if (!item) {
             return (
               <div
                 key={dayInfo.dayNumber}
                 className="bg-white/50 rounded-2xl p-5 border border-dashed border-outline-variant/30 flex flex-col justify-between items-center text-center h-full min-h-[260px]"
               >
-                <div className="w-full text-left font-bold text-xs text-espresso-dark/50 uppercase tracking-wider">
-                  {dayInfo.name}
+                <div className="w-full text-left font-bold text-xs text-espresso-dark/50 uppercase tracking-wider flex items-center justify-between">
+                  <span>{dayInfo.name}</span>
+                  <span className="text-[11px] font-semibold text-espresso-dark/40">{dateStr}</span>
                 </div>
                 <p className="text-xs text-espresso-dark/40 italic">Belum ada menu diset untuk hari ini</p>
               </div>
@@ -195,6 +297,7 @@ export const WeeklyMenuSection: React.FC<WeeklyMenuSectionProps> = ({
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5" />
                   <span>{dayInfo.name}</span>
+                  <span className="text-[11px] font-semibold opacity-90">({dateStr})</span>
                 </span>
 
                 {status === 'past_day' && (

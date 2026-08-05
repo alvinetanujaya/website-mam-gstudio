@@ -363,13 +363,19 @@ export default function App() {
     return "Rp " + num.toLocaleString("id-ID");
   };
 
+  // Helper: Non-weekly menu items for home page featured slider
+  const homeMenuItems = useMemo(() => {
+    return menuItems.filter((item) => item.category !== "Menu Mingguan" && !item.isWeekly);
+  }, [menuItems]);
+
   // Helper: Find current active category items
   const filteredMenu = useMemo(() => {
     if (activeCategory === "Semua") {
       return menuItems.filter((item) => item.category !== "Menu Mingguan" && !item.isWeekly);
     }
     if (activeCategory === "📅 Menu Mingguan" || activeCategory === "Menu Mingguan") {
-      return menuItems.filter((item) => item.category === "Menu Mingguan" || item.isWeekly);
+      // Weekly menu schedule is handled exclusively by WeeklyMenuSection component above to prevent double cards
+      return [];
     }
     return menuItems.filter((item) => item.category === activeCategory);
   }, [activeCategory, menuItems]);
@@ -1087,10 +1093,29 @@ Mohon diproses ya min, terima kasih!`;
                       : "text-espresso-dark hover:bg-espresso-dark/5"
                   }`}
                 >
-                  <Sparkles className="w-5 h-5" />
+                  <Sparkles className="w-5 h-5 text-terracotta" />
                   <span>Beranda</span>
                 </button>
 
+                {/* Standalone Category: Menu Mingguan */}
+                <button
+                  onClick={() => { setCurrentTab("menu"); setActiveCategory("Menu Mingguan"); setIsDrawerOpen(false); }}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-left transition-all ${
+                    currentTab === "menu" && activeCategory === "Menu Mingguan"
+                      ? "bg-terracotta/15 text-terracotta shadow-xs"
+                      : "text-espresso-dark hover:bg-espresso-dark/5"
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <Calendar className="w-5 h-5 text-terracotta" />
+                    <span>Menu Mingguan</span>
+                  </div>
+                  <span className="text-[10px] font-bold bg-terracotta text-white px-2 py-0.5 rounded-full shadow-2xs">
+                    Jadwal Harian
+                  </span>
+                </button>
+
+                {/* Main Menu List */}
                 <button
                   onClick={() => { setCurrentTab("menu"); setActiveCategory("Semua"); setIsDrawerOpen(false); }}
                   className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl font-semibold text-left transition-all ${
@@ -1292,7 +1317,7 @@ Mohon diproses ya min, terima kasih!`;
                 ref={homeMenuScrollRef}
                 className="flex gap-6 overflow-x-auto snap-x snap-proximity pb-8 pt-3 px-1 hide-scrollbar smooth-scroll-x touch-pan-x touch-pan-y transform-gpu"
               >
-                {menuItems.map((item, index) => {
+                {homeMenuItems.map((item, index) => {
                   const itemStock = item.stock ?? 50;
                   const isOut = itemStock <= 0;
 
