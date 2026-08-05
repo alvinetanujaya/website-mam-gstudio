@@ -1104,17 +1104,19 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                     <div>
                       <h4 className="text-sm font-bold text-espresso-dark">Sinkronisasi Database Supabase</h4>
                       <p className="text-xs text-espresso-dark/60">
-                        Masukkan/Perbarui daftar menu awal beserta stok ke tabel <code className="font-mono bg-white px-1 rounded border">products</code>
+                        Sinkronkan 14 Produk Utama (Makanan Utama & Frozen Food) & hapus Menu Mingguan (ID 101-107) dari Supabase.
                       </p>
                     </div>
-                    <button
-                      onClick={handleSeed}
-                      disabled={isSeeding}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-terracotta text-white font-semibold text-xs hover:bg-terracotta-dark disabled:opacity-50 transition-all shadow-sm shrink-0 cursor-pointer"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isSeeding ? "animate-spin" : ""}`} />
-                      {isSeeding ? "Memproses..." : "Sync / Seed ke Supabase"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSeed}
+                        disabled={isSeeding}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-terracotta text-white font-semibold text-xs hover:bg-terracotta-dark disabled:opacity-50 transition-all shadow-sm shrink-0 cursor-pointer"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSeeding ? "animate-spin" : ""}`} />
+                        {isSeeding ? "Memproses..." : "Sync / Seed ke Supabase"}
+                      </button>
+                    </div>
                   </div>
 
                   {seedMessage && (
@@ -1147,13 +1149,14 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
                   <div className="space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-espresso-dark/60">
-                        Daftar Stok Menu Terbaru ({menuItems.length} Item)
+                        Daftar Stok Menu Utama ({menuItems.filter(m => m.category !== "Menu Mingguan" && !m.isWeekly).length} Item)
                       </h4>
 
                       {/* Category Filter Pills */}
                       <div className="flex items-center gap-1.5 bg-warm-cream/60 p-1 rounded-xl border border-outline-variant/15 self-start sm:self-auto overflow-x-auto max-w-full">
-                        {["Semua", "Menu Mingguan", "Makanan Utama", "Frozen Food"].map((cat) => {
-                          const count = cat === "Semua" ? menuItems.length : menuItems.filter(m => m.category === cat || (cat === "Menu Mingguan" && m.isWeekly)).length;
+                        {["Semua", "Makanan Utama", "Frozen Food"].map((cat) => {
+                          const stockItems = menuItems.filter(m => m.category !== "Menu Mingguan" && !m.isWeekly);
+                          const count = cat === "Semua" ? stockItems.length : stockItems.filter(m => m.category === cat).length;
                           const isActive = stockCategoryFilter === cat;
                           return (
                             <button
@@ -1174,7 +1177,8 @@ INSERT INTO admin_settings (key, value) VALUES ('admin_pin', '1234') ON CONFLICT
 
                     <div className="divide-y divide-outline-variant/15 border border-outline-variant/20 rounded-2xl overflow-hidden bg-white">
                       {menuItems
-                        .filter(item => stockCategoryFilter === "Semua" || item.category === stockCategoryFilter || (stockCategoryFilter === "Menu Mingguan" && item.isWeekly))
+                        .filter(item => item.category !== "Menu Mingguan" && !item.isWeekly)
+                        .filter(item => stockCategoryFilter === "Semua" || item.category === stockCategoryFilter)
                         .map((item) => {
                         const currentStock = item.stock ?? 50;
                         const isOut = currentStock <= 0;

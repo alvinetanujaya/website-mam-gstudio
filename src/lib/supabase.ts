@@ -38,6 +38,14 @@ function formatSupabaseErrorMessage(error: any): string {
 
 // Fetch products from Supabase 'products' table (with fallback to server API)
 export async function fetchProductsFromSupabase(): Promise<{ data: DbProduct[] | null; error: any }> {
+  // Helper to filter out system rows and weekly menu items (which don't use stock management)
+  const isStandardProduct = (p: DbProduct) =>
+    p.id !== 999999 &&
+    p.name !== '__ADMIN_PIN__' &&
+    p.category !== 'Menu Mingguan' &&
+    !p.name.startsWith('[') &&
+    !(p.id >= 100 && p.id <= 200);
+
   // 1. Direct Supabase Client Query
   if (supabase) {
     try {
@@ -47,7 +55,7 @@ export async function fetchProductsFromSupabase(): Promise<{ data: DbProduct[] |
         .order('id', { ascending: true });
 
       if (!error && data && data.length > 0) {
-        const filtered = data.filter((p: DbProduct) => p.id !== 999999 && p.name !== '__ADMIN_PIN__');
+        const filtered = data.filter(isStandardProduct);
         return { data: filtered, error: null };
       }
       if (error) {
@@ -64,7 +72,7 @@ export async function fetchProductsFromSupabase(): Promise<{ data: DbProduct[] |
     if (res.ok) {
       const json = await res.json();
       if (json && Array.isArray(json.data) && json.data.length > 0) {
-        const filtered = json.data.filter((p: DbProduct) => p.id !== 999999 && p.name !== '__ADMIN_PIN__');
+        const filtered = json.data.filter(isStandardProduct);
         return { data: filtered, error: null };
       }
     }
@@ -114,6 +122,8 @@ export async function seedProductsToSupabase(itemsToSeed: MenuItem[] = MENU_ITEM
 
     // 2. Clean up / delete any old "Menu Mingguan" rows or weekly IDs from Supabase products table
     try {
+      await fetch('/api/admin/clean-weekly-products', { method: 'POST' }).catch(() => {});
+      await supabase.from('products').delete().in('id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
       await supabase.from('products').delete().eq('category', 'Menu Mingguan');
       await supabase.from('products').delete().ilike('name', '[%');
       await supabase.from('products').delete().gte('id', 100).lte('id', 200);
@@ -134,7 +144,7 @@ export async function seedProductsToSupabase(itemsToSeed: MenuItem[] = MENU_ITEM
 
     return { 
       success: true, 
-      message: `✅ Berhasil menyelaraskan ${data?.length || 0} produk (Makanan Utama & Frozen Food) ke Supabase! Menu Mingguan telah dibersihkan & tidak dicatat di tabel stok Supabase.` 
+      message: `✅ Berhasil menyelaraskan ${data?.length || 0} produk (Makanan Utama & Frozen Food) ke Supabase! Item Menu Mingguan (ID 101-107) telah dibersihkan & dihapus dari tabel Supabase.` 
     };
   } catch (err: any) {
     return { success: false, message: formatSupabaseErrorMessage(err) };

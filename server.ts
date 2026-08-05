@@ -346,6 +346,27 @@ const handleGetProducts = async (req: express.Request, res: express.Response) =>
 app.get("/api/products", handleGetProducts);
 app.get("/app/api/products", handleGetProducts);
 
+// API Route: Clean up / delete Weekly Menu items from Supabase products table
+app.post("/api/admin/clean-weekly-products", async (req: express.Request, res: express.Response) => {
+  try {
+    const supabase = getSupabaseServerClient();
+    if (!supabase) {
+      return res.status(500).json({ error: "Supabase client not configured on server" });
+    }
+
+    console.log("[Supabase Server] Deleting weekly menu items (ID 101-107, category Menu Mingguan)...");
+    await supabase.from("products").delete().in("id", [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
+    await supabase.from("products").delete().eq("category", "Menu Mingguan");
+    await supabase.from("products").delete().ilike("name", "[%");
+    await supabase.from("products").delete().gte("id", 100).lte("id", 200);
+
+    return res.json({ success: true, message: "Menu Mingguan (ID 101-107) berhasil dibersihkan dari Supabase." });
+  } catch (err: any) {
+    console.error("[Supabase Server] Error cleaning weekly products:", err);
+    return res.status(500).json({ error: err?.message || String(err) });
+  }
+});
+
 // Persistent Admin PIN Storage (Memory + Project File + Dual Supabase Strategy)
 const PIN_FILE_PATH = path.join(process.cwd(), "admin_pin.json");
 let cachedServerAdminPin: string | null = null;
