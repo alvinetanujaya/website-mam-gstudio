@@ -785,18 +785,28 @@ export default function App() {
               const orderId = data.order_id || `ORDER-${Date.now()}`;
 
               // Record order & decrement stock in Supabase directly from client
+              const itemsToSave = [
+                ...cart.map((c) => ({
+                  productId: c.menuItem.id,
+                  productName: c.menuItem.name + (c.selectedOptions && c.selectedOptions.length > 0 ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})` : ""),
+                  quantity: c.quantity,
+                  price: c.unitPrice,
+                })),
+                ...(deliveryTripsData.totalShippingFee > 0 ? [{
+                  productId: undefined,
+                  productName: `Ongkos Kirim (${deliveryTripsData.tripsCount}x Pengiriman)`,
+                  quantity: 1,
+                  price: deliveryTripsData.totalShippingFee,
+                }] : [])
+              ];
+
               recordSupabaseOrder({
                 orderId: orderId,
                 customerName: cleanName,
                 customerPhone: cleanPhone,
                 totalAmount: grandTotal,
                 status: "pending",
-                items: cart.map((c) => ({
-                  productId: c.menuItem.id,
-                  productName: c.menuItem.name + (c.selectedOptions && c.selectedOptions.length > 0 ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})` : ""),
-                  quantity: c.quantity,
-                  price: c.unitPrice,
-                })),
+                items: itemsToSave,
               }).then(() => {
                 loadSupabaseProducts();
               });
@@ -959,18 +969,28 @@ Mohon diproses ya min, terima kasih!`;
 
     // Record order in Supabase
     const orderId = `ORDER-WA-${Date.now()}`;
+    const waItemsToSave = [
+      ...cart.map((c) => ({
+        productId: c.menuItem.id,
+        productName: c.menuItem.name + (c.selectedOptions && c.selectedOptions.length > 0 ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})` : ""),
+        quantity: c.quantity,
+        price: c.unitPrice,
+      })),
+      ...(deliveryTripsData.totalShippingFee > 0 ? [{
+        productId: undefined,
+        productName: `Ongkos Kirim (${deliveryTripsData.tripsCount}x Pengiriman)`,
+        quantity: 1,
+        price: deliveryTripsData.totalShippingFee,
+      }] : [])
+    ];
+
     recordSupabaseOrder({
       orderId: orderId,
       customerName: cleanName,
       customerPhone: cleanPhone,
       totalAmount: grandTotal,
       status: "pending_wa",
-      items: cart.map((c) => ({
-        productId: c.menuItem.id,
-        productName: c.menuItem.name + (c.selectedOptions && c.selectedOptions.length > 0 ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})` : ""),
-        quantity: c.quantity,
-        price: c.unitPrice,
-      })),
+      items: waItemsToSave,
     }).then(() => {
       loadSupabaseProducts();
     });
