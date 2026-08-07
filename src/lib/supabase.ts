@@ -322,70 +322,6 @@ export async function updateSupabaseOrderStatus(orderId: string, newStatus: stri
   }
 }
 
-// Helper to generate realistic item breakdown for order total
-export function generateItemsForTotal(totalAmount: number, orderId: string): DbOrderItem[] {
-  const num = Math.max(10000, Number(totalAmount) || 50000);
-  
-  // Deterministic seed based on orderId
-  let hash = 0;
-  for (let i = 0; i < orderId.length; i++) {
-    hash = (hash << 5) - hash + orderId.charCodeAt(i);
-    hash |= 0;
-  }
-  hash = Math.abs(hash);
-
-  const sampleCatalog = [
-    { name: "Nasi Kotak Ayam Bakar Bumbu Madu", price: 25000 },
-    { name: "Nasi Kotak Rendang Sapi Padang", price: 30000 },
-    { name: "Nasi Campur Spesial MAM", price: 45000 },
-    { name: "Rendang Sapi Frozen (500g)", price: 60000 },
-    { name: "Ayam Ungkep Lengkuas (1 Ekor)", price: 65000 },
-    { name: "Nasi Kotak Empal Serundeng", price: 32000 },
-    { name: "Es Cendol Durian Segar", price: 15000 },
-    { name: "Sambal Terasi Khas MAM", price: 12000 }
-  ];
-
-  const item1 = sampleCatalog[hash % sampleCatalog.length];
-  const item2 = sampleCatalog[(hash + 3) % sampleCatalog.length];
-
-  if (num <= 35000) {
-    return [{
-      order_id: orderId,
-      product_name: item1.name,
-      quantity: 1,
-      price: num
-    }];
-  } else {
-    const p1 = Math.round(num * 0.55);
-    const p2 = num - p1;
-    const qty1 = Math.max(1, Math.floor(p1 / item1.price));
-    const price1 = Math.round(p1 / qty1);
-    const qty2 = Math.max(1, Math.floor(p2 / item2.price));
-    const price2 = Math.round(p2 / qty2);
-
-    return [
-      { order_id: orderId, product_name: item1.name, quantity: qty1, price: price1 },
-      { order_id: orderId, product_name: item2.name, quantity: qty2, price: price2 }
-    ];
-  }
-}
-
-// Background helper to backfill missing order_items in Supabase database
-async function backfillOrderItemsInSupabase(orderId: string, items: DbOrderItem[]) {
-  if (!supabase || !items || items.length === 0) return;
-  try {
-    const payload = items.map(it => ({
-      order_id: orderId,
-      product_name: it.product_name || (it as any).productName || (it as any).name || "Menu Culinary MAM",
-      quantity: it.quantity,
-      price: it.price
-    }));
-    await supabase.from('order_items').insert(payload);
-  } catch (e) {
-    // Ignore error if already backfilled
-  }
-}
-
 // Fetch order history from Supabase with order_items
 export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { order_items?: DbOrderItem[]; items?: DbOrderItem[] })[] | null; error: any }> {
   if (!supabase) {
@@ -402,7 +338,7 @@ export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { order_
 
     if (!joinErr && ordersWithItems) {
       const formatted = ordersWithItems.map((ord: any) => {
-        let items = (ord.order_items || ord.items || []).map((it: any) => ({
+        const items = (ord.order_items || ord.items || []).map((it: any) => ({
           ...it,
           productId: it.product_id,
           productName: it.product_name || it.name || undefined,
@@ -411,11 +347,6 @@ export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { order_
           quantity: Number(it.quantity) || 1,
           price: Number(it.price) || 0
         }));
-
-        if (!items || items.length === 0) {
-          items = generateItemsForTotal(ord.total_amount, ord.id);
-          backfillOrderItemsInSupabase(ord.id, items);
-        }
 
         return {
           ...ord,
@@ -436,14 +367,10 @@ export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { order_
       return { data: null, error: ordersErr };
     }
 
-    const formattedFallback = (orders || []).map((ord: any) => {
-      const items = generateItemsForTotal(ord.total_amount, ord.id);
-      backfillOrderItemsInSupabase(ord.id, items);
-      return {
-        ...ord,
-        items: items
-      };
-    });
+    const formattedFallback = (orders || []).map((ord: any) => ({
+      ...ord,
+      items: []
+    }));
 
     return { data: formattedFallback, error: null };
   } catch (err: any) {
