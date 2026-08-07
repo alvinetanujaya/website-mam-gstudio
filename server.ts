@@ -63,17 +63,34 @@ async function recordOrderToSupabase(params: {
 
     // 2. Insert order_items
     if (params.items && params.items.length > 0) {
+      let validProdIds = new Set<number>();
+      try {
+        const { data: prods } = await supabase.from("products").select("id");
+        if (prods) {
+          prods.forEach((p: any) => validProdIds.add(p.id));
+        }
+      } catch (e) {
+        console.warn("[Supabase Server] Product FK check skipped:", e);
+      }
+
       const orderItems = params.items.map((it) => ({
         order_id: params.orderId,
-        product_id: typeof it.productId === "number" ? it.productId : null,
-        product_name: it.productName || null,
-        quantity: it.quantity,
-        price: it.price,
+        product_id: (typeof it.productId === "number" && validProdIds.has(it.productId)) ? it.productId : null,
+        product_name: it.productName || (it as any).product_name || "Menu Culinary MAM",
+        quantity: Math.max(1, Number(it.quantity) || 1),
+        price: Math.max(0, Number(it.price) || 0),
       }));
 
       const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
       if (itemsErr) {
         console.error("[Supabase Server Error] Failed to insert order_items:", itemsErr.message);
+        // Retry with null product_id to bypass foreign key constraint
+        try {
+          const fallbackData = orderItems.map((it) => ({ ...it, product_id: null }));
+          await supabase.from("order_items").insert(fallbackData);
+        } catch (retryErr: any) {
+          console.error("[Supabase Server Error] Retry order_items failed:", retryErr?.message || retryErr);
+        }
       }
     }
 

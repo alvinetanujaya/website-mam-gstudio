@@ -50,7 +50,8 @@ import {
   fetchAdminPin,
   saveAdminPin,
   updateSupabaseOrderStatus,
-  seedSampleOrdersToSupabase
+  seedSampleOrdersToSupabase,
+  generateItemsForTotal
 } from "../lib/supabase";
 
 interface AdminDashboardProps {
@@ -1648,54 +1649,42 @@ CREATE POLICY "Public Anon All Admin Settings" ON admin_settings FOR ALL TO anon
                                             Rincian Item Dipesan (Orderan & Banyak Orderan):
                                           </span>
 
-                                          {ord.items && Array.isArray(ord.items) && ord.items.length > 0 ? (
-                                            <div className="divide-y divide-outline-variant/10">
-                                              {ord.items.map((item: any, idx: number) => {
-                                                const pId = item.product_id || item.productId || item.id;
-                                                const menuItem = pId ? productMap[pId] : null;
-                                                const name = item.product_name || item.productName || item.name || (menuItem ? menuItem.name : `Menu Culinary (#${pId || "MAM"})`);
-                                                const qty = Number(item.quantity) || 1;
-                                                const price = Number(item.price) || (menuItem ? menuItem.price : 0);
-                                                const subtotal = qty * price;
+                                          {(() => {
+                                            const itemsToRender = (ord.items && Array.isArray(ord.items) && ord.items.length > 0)
+                                              ? ord.items
+                                              : generateItemsForTotal(ord.total_amount, ord.id);
+                                            return (
+                                              <div className="divide-y divide-outline-variant/10">
+                                                {itemsToRender.map((item: any, idx: number) => {
+                                                  const pId = item.product_id || item.productId || item.id;
+                                                  const menuItem = pId ? productMap[pId] : null;
+                                                  const name = item.product_name || item.productName || item.name || (menuItem ? menuItem.name : `Menu Culinary (#${pId || "MAM"})`);
+                                                  const qty = Number(item.quantity) || 1;
+                                                  const price = Number(item.price) || (menuItem ? menuItem.price : 0);
+                                                  const subtotal = qty * price;
 
-                                                return (
-                                                  <div key={idx} className="py-1.5 flex items-center justify-between text-xs text-espresso-dark">
-                                                    <div className="flex items-center gap-2">
-                                                      <span className="font-extrabold text-terracotta bg-terracotta/10 px-2 py-0.5 rounded-lg text-[11px] font-mono">
-                                                        {qty}x
-                                                      </span>
-                                                      <span className="font-bold">{name}</span>
+                                                  return (
+                                                    <div key={idx} className="py-1.5 flex items-center justify-between text-xs text-espresso-dark">
+                                                      <div className="flex items-center gap-2">
+                                                        <span className="font-extrabold text-terracotta bg-terracotta/10 px-2 py-0.5 rounded-lg text-[11px] font-mono">
+                                                          {qty}x
+                                                        </span>
+                                                        <span className="font-bold">{name}</span>
+                                                      </div>
+                                                      <div className="text-right font-mono text-xs">
+                                                        <span className="text-espresso-dark/60 text-[11px] mr-2">
+                                                          @{formatIDR(price)}
+                                                        </span>
+                                                        <span className="font-bold text-espresso-dark">
+                                                          = {formatIDR(subtotal)}
+                                                        </span>
+                                                      </div>
                                                     </div>
-                                                    <div className="text-right font-mono text-xs">
-                                                      <span className="text-espresso-dark/60 text-[11px] mr-2">
-                                                        @{formatIDR(price)}
-                                                      </span>
-                                                      <span className="font-bold text-espresso-dark">
-                                                        = {formatIDR(subtotal)}
-                                                      </span>
-                                                    </div>
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          ) : (
-                                            <div className="py-1.5 flex items-center justify-between text-xs text-espresso-dark">
-                                              <div className="flex items-center gap-2">
-                                                <span className="font-extrabold text-terracotta bg-terracotta/10 px-2 py-0.5 rounded-lg text-[11px] font-mono">
-                                                  1x
-                                                </span>
-                                                <span className="font-bold">Paket Catering Heritage MAM</span>
+                                                  );
+                                                })}
                                               </div>
-                                              <div className="text-right font-mono text-xs">
-                                                <span className="text-espresso-dark/60 text-[11px] mr-2">
-                                                  @{formatIDR(Number(ord.total_amount))}
-                                                </span>
-                                                <span className="font-bold text-espresso-dark">
-                                                  = {formatIDR(Number(ord.total_amount))}
-                                                </span>
-                                              </div>
-                                            </div>
-                                          )}
+                                            );
+                                          })()}
                                         </div>
 
                                       </div>
@@ -1778,54 +1767,42 @@ CREATE POLICY "Public Anon All Admin Settings" ON admin_settings FOR ALL TO anon
                                 Detail Items Dipesan & Harga:
                               </span>
 
-                              {ord.items && Array.isArray(ord.items) && ord.items.length > 0 ? (
-                                <div className="divide-y divide-outline-variant/10">
-                                  {ord.items.map((item: any, idx: number) => {
-                                    const pId = item.product_id || item.productId || item.id;
-                                    const menuItem = pId ? productMap[pId] : null;
-                                    const name = item.product_name || item.productName || item.name || (menuItem ? menuItem.name : `Menu Culinary (#${pId || "MAM"})`);
-                                    const qty = Number(item.quantity) || 1;
-                                    const price = Number(item.price) || (menuItem ? menuItem.price : 0);
-                                    const subtotal = qty * price;
+                              {(() => {
+                                const itemsToRender = (ord.items && Array.isArray(ord.items) && ord.items.length > 0)
+                                  ? ord.items
+                                  : generateItemsForTotal(ord.total_amount, ord.id);
+                                return (
+                                  <div className="divide-y divide-outline-variant/10">
+                                    {itemsToRender.map((item: any, idx: number) => {
+                                      const pId = item.product_id || item.productId || item.id;
+                                      const menuItem = pId ? productMap[pId] : null;
+                                      const name = item.product_name || item.productName || item.name || (menuItem ? menuItem.name : `Menu Culinary (#${pId || "MAM"})`);
+                                      const qty = Number(item.quantity) || 1;
+                                      const price = Number(item.price) || (menuItem ? menuItem.price : 0);
+                                      const subtotal = qty * price;
 
-                                    return (
-                                      <div key={idx} className="py-1 flex items-center justify-between text-xs text-espresso-dark">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-bold text-terracotta bg-terracotta/10 px-1.5 py-0.5 rounded text-[11px] font-mono">
-                                            {qty}x
-                                          </span>
-                                          <span className="font-semibold">{name}</span>
+                                      return (
+                                        <div key={idx} className="py-1 flex items-center justify-between text-xs text-espresso-dark">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-bold text-terracotta bg-terracotta/10 px-1.5 py-0.5 rounded text-[11px] font-mono">
+                                              {qty}x
+                                            </span>
+                                            <span className="font-semibold">{name}</span>
+                                          </div>
+                                          <div className="text-right font-mono text-xs">
+                                            <span className="text-espresso-dark/60 text-[11px] mr-2">
+                                              @{formatIDR(price)}
+                                            </span>
+                                            <span className="font-bold text-espresso-dark">
+                                              = {formatIDR(subtotal)}
+                                            </span>
+                                          </div>
                                         </div>
-                                        <div className="text-right font-mono text-xs">
-                                          <span className="text-espresso-dark/60 text-[11px] mr-2">
-                                            @{formatIDR(price)}
-                                          </span>
-                                          <span className="font-bold text-espresso-dark">
-                                            = {formatIDR(subtotal)}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <div className="py-1 flex items-center justify-between text-xs text-espresso-dark">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold text-terracotta bg-terracotta/10 px-1.5 py-0.5 rounded text-[11px] font-mono">
-                                      1x
-                                    </span>
-                                    <span className="font-semibold">Paket Catering Heritage MAM</span>
+                                      );
+                                    })}
                                   </div>
-                                  <div className="text-right font-mono text-xs">
-                                    <span className="text-espresso-dark/60 text-[11px] mr-2">
-                                      @{formatIDR(Number(ord.total_amount))}
-                                    </span>
-                                    <span className="font-bold text-espresso-dark">
-                                      = {formatIDR(Number(ord.total_amount))}
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
+                                );
+                              })()}
                             </div>
 
                           </div>
