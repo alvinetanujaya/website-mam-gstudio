@@ -34,7 +34,9 @@ export interface DbOrder {
 export interface DbOrderItem {
   id?: number;
   order_id: string;
-  product_id: number;
+  product_id?: number | null;
+  product_name?: string;
+  name?: string;
   quantity: number;
   price: number;
 }

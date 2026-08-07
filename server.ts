@@ -32,7 +32,7 @@ async function recordOrderToSupabase(params: {
   customerPhone: string;
   totalAmount: number;
   status?: string;
-  items: { productId?: number; quantity: number; price: number }[];
+  items: { productId?: number; productName?: string; quantity: number; price: number }[];
 }) {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
@@ -66,6 +66,7 @@ async function recordOrderToSupabase(params: {
       const orderItems = params.items.map((it) => ({
         order_id: params.orderId,
         product_id: typeof it.productId === "number" ? it.productId : null,
+        product_name: it.productName || null,
         quantity: it.quantity,
         price: it.price,
       }));
@@ -242,7 +243,8 @@ const handleTokenizer = async (req: express.Request, res: express.Response) => {
       totalAmount: amount,
       status: "pending",
       items: (Array.isArray(item_details) ? item_details : []).map((it: any) => ({
-        productId: Number(it.productId || it.product_id || it.id) || undefined,
+        productId: Number(it.productId || it.product_id || (typeof it.id === "number" ? it.id : String(it.id).replace(/[^0-9]/g, ""))) || undefined,
+        productName: String(it.name || it.productName || it.product_name || "").trim(),
         quantity: Number(it.quantity) || 1,
         price: Number(it.price) || 0,
       })),

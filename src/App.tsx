@@ -793,6 +793,7 @@ export default function App() {
                 status: "pending",
                 items: cart.map((c) => ({
                   productId: c.menuItem.id,
+                  productName: c.menuItem.name + (c.selectedOptions && c.selectedOptions.length > 0 ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})` : ""),
                   quantity: c.quantity,
                   price: c.unitPrice,
                 })),
@@ -966,6 +967,7 @@ Mohon diproses ya min, terima kasih!`;
       status: "pending_wa",
       items: cart.map((c) => ({
         productId: c.menuItem.id,
+        productName: c.menuItem.name + (c.selectedOptions && c.selectedOptions.length > 0 ? ` (+${c.selectedOptions.map(o => o.name).join(", ")})` : ""),
         quantity: c.quantity,
         price: c.unitPrice,
       })),

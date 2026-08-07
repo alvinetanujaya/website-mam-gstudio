@@ -123,8 +123,8 @@ export async function seedProductsToSupabase(itemsToSeed: MenuItem[] = MENU_ITEM
     // 2. Clean up / delete any old "Menu Mingguan" rows or weekly IDs from Supabase products table
     try {
       await fetch('/api/admin/clean-weekly-products', { method: 'POST' }).catch(() => {});
-      await supabase.from('order_items').update({ product_id: null }).in('product_id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]).catch(() => {});
-      await supabase.from('order_items').delete().in('product_id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]).catch(() => {});
+      try { await supabase.from('order_items').update({ product_id: null }).in('product_id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]); } catch {}
+      try { await supabase.from('order_items').delete().in('product_id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]); } catch {}
       await supabase.from('products').delete().in('id', [101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
       await supabase.from('products').delete().eq('category', 'Menu Mingguan');
       await supabase.from('products').delete().ilike('name', '[%');
@@ -160,7 +160,7 @@ export async function recordSupabaseOrder(params: {
   customerPhone: string;
   totalAmount: number;
   status?: string;
-  items: { productId: number; quantity: number; price: number }[];
+  items: { productId?: number; productName?: string; quantity: number; price: number }[];
 }): Promise<{ success: boolean; error?: string }> {
   if (!supabase) {
     console.warn('Supabase not configured. Skipping server database insertion.');
@@ -190,7 +190,8 @@ export async function recordSupabaseOrder(params: {
     if (params.items && params.items.length > 0) {
       const orderItemsData = params.items.map(item => ({
         order_id: params.orderId,
-        product_id: item.productId,
+        product_id: typeof item.productId === 'number' ? item.productId : null,
+        product_name: item.productName || null,
         quantity: item.quantity,
         price: item.price
       }));
@@ -206,7 +207,7 @@ export async function recordSupabaseOrder(params: {
 
     // 3. Decrement Stock for each product
     for (const item of params.items) {
-      if (item.productId) {
+      if (typeof item.productId === 'number') {
         // Fetch current stock and category first
         const { data: prodData } = await supabase
           .from('products')
@@ -321,7 +322,15 @@ export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { order_
     if (!joinErr && ordersWithItems) {
       const formatted = ordersWithItems.map((ord: any) => ({
         ...ord,
-        items: ord.order_items || ord.items || []
+        items: (ord.order_items || ord.items || []).map((it: any) => ({
+          ...it,
+          productId: it.product_id,
+          productName: it.product_name || it.name || undefined,
+          product_name: it.product_name || it.name || undefined,
+          name: it.product_name || it.name || undefined,
+          quantity: Number(it.quantity) || 1,
+          price: Number(it.price) || 0
+        }))
       }));
       return { data: formatted, error: null };
     }
@@ -340,6 +349,67 @@ export async function fetchSupabaseOrders(): Promise<{ data: (DbOrder & { order_
     return { data: orders, error: null };
   } catch (err: any) {
     return { data: null, error: err };
+  }
+}
+
+// Seed sample orders & order_items into Supabase
+export async function seedSampleOrdersToSupabase(): Promise<{ success: boolean; message?: string }> {
+  if (!supabase) {
+    return { success: false, message: 'Supabase tidak terhubung' };
+  }
+
+  try {
+    const sampleOrders = [
+      {
+        id: `ORDER-SEED-${Date.now()}-1`,
+        customer_name: 'Budi Santoso',
+        customer_phone: '081234567890',
+        total_amount: 110000,
+        status: 'settlement',
+        items: [
+          { productId: 1, productName: 'Nasi Kotak Ayam Bakar', quantity: 2, price: 25000 },
+          { productId: 5, productName: 'Rendang Sapi Frozen (500g)', quantity: 1, price: 60000 }
+        ]
+      },
+      {
+        id: `ORDER-SEED-${Date.now()}-2`,
+        customer_name: 'Siti Rahma',
+        customer_phone: '085712345678',
+        total_amount: 215000,
+        status: 'settlement',
+        items: [
+          { productId: 2, productName: 'Nasi Kotak Rendang', quantity: 3, price: 30000 },
+          { productId: 6, productName: 'Ayam Ungkep Bumbu Lengkuas (1 Ekor)', quantity: 1, price: 65000 },
+          { productId: 8, productName: 'Empal Gentong Sapi Frozen (300g)', quantity: 1, price: 60000 }
+        ]
+      },
+      {
+        id: `ORDER-SEED-${Date.now()}-3`,
+        customer_name: 'Ahmad Hidayat',
+        customer_phone: '082198765432',
+        total_amount: 80000,
+        status: 'pending_wa',
+        items: [
+          { productId: 4, productName: 'Nasi Campur Spesial MAM', quantity: 1, price: 45000 },
+          { productId: 13, productName: 'Nasi Kotak Empal Serundeng', quantity: 1, price: 35000 }
+        ]
+      }
+    ];
+
+    for (const ord of sampleOrders) {
+      await recordSupabaseOrder({
+        orderId: ord.id,
+        customerName: ord.customer_name,
+        customerPhone: ord.customer_phone,
+        totalAmount: ord.total_amount,
+        status: ord.status,
+        items: ord.items
+      });
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: formatSupabaseErrorMessage(err) };
   }
 }
 
